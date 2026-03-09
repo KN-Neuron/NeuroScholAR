@@ -1,0 +1,61 @@
+# Unity project folders
+/[Ll]ibrary/
+/[Ll]ogs/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Uu]ser[Ss]ettings/
+
+# Asset Store tools
+Assets/AssetStoreTools*
+
+# Memory captures (can be large and sensitive)
+/[Mm]emoryCaptures/
+
+# Recordings (can be large)
+/[Rr]ecordings/
+
+# JetBrains Rider plugin
+Assets/Plugins/Editor/JetBrains*
+
+# IDE folders
+.vs/
+.vscode/
+.idea/
+.consulo/
+
+# Build outputs
+*.apk
+*.aab
+*.unitypackage
+*.app
+*.exe
+
+# Visual Studio/MonoDevelop files
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.opendb
+*.VC.db
+
+# Generated meta files
+*.pidb.meta
+*.pdb.meta
+*.mdb.meta
+
+# Crash reports
+sysinfo.txt
+crashlytics-*.properties
+Assets/StreamingAssets/crashlytics-build.properties
+
+# Addressables
+Assets/AddressableAssetsData/*/*.bin*
+
+# Exported objects
+ExportedObj/
