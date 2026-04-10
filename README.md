@@ -19,7 +19,24 @@ The project consists of:
 - [Contributing](./docs/CONTRIBUTING.md) - Contributing guidelines
 
 ## 🚀 Getting Started
-(To be filled as project develops)
+### Backend (local)
+1. Start PostgreSQL:
+	- `cd backend`
+	- `docker compose up -d db`
+2. Create local backend env file:
+	- `copy .env.example .env`
+	- Set at least:
+	  - `JWT_SECRET` to a long random string
+	  - `DB_HOST=localhost`
+	  - `DB_PORT=5432`
+	  - `DB_USER=postgres`
+	  - `DB_PASSWORD=postgres`
+	  - `DB_NAME=neuroscholar`
+	  - `DB_SSLMODE=disable`
+3. Run database migrations explicitly:
+	- `docker compose run --rm migrate`
+4. Start API server:
+	- `go run .`
 
 ## 📋 Prerequisites
 - AR glasses (XREAL air2 ultra)
