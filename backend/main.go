@@ -34,20 +34,6 @@ type jwtClaims struct {
 	jwt.RegisteredClaims
 }
 
-func ensureUsersTable(db *sql.DB) error {
-	query := `
-		CREATE TABLE IF NOT EXISTS users (
-			id BIGSERIAL PRIMARY KEY,
-			email TEXT NOT NULL UNIQUE,
-			password_hash TEXT NOT NULL,
-			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-		);
-	`
-
-	_, err := db.Exec(query)
-	return err
-}
-
 func jwtSecret() string {
 	return os.Getenv("JWT_SECRET")
 }
@@ -95,8 +81,8 @@ func main() {
 		log.Fatal("JWT_SECRET is required")
 	}
 
-	if err := ensureUsersTable(db); err != nil {
-		log.Fatalf("Failed to initialize users table: %v", err)
+	if err := database.ValidateRequiredSchema(db); err != nil {
+		log.Fatalf("Database schema validation failed: %v", err)
 	}
 
 	r := gin.Default()
