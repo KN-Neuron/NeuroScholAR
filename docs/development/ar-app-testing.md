@@ -1,5 +1,8 @@
 # Testing Guide: Running XREAL Apps on Real Devices
 
+## What to do beforehand
+Install xreal unity sdk from `https://developer.xreal.com/download` and without extracting it, put it in `NeuroScholAR/App/Packages`!
+
 ## Important Note
 XREAL Beam has only one USB-C port that supports debugging (the glasses port). This means **wireless debugging is required** since the glasses occupy the debugging port.
 
