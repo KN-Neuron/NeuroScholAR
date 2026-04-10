@@ -11,7 +11,8 @@ Authorization: Bearer <your_jwt_token>
 | POST | `/auth/register` | User registration |
 | POST | `/auth/login` | Login (returns JWT) |
 | POST | `/auth/refresh` | Refresh JWT token |
-| POST | `/auth/google` | Google OAuth login |
+| GET | `/auth/google/login` | Start Google OAuth login |
+| GET | `/auth/google/callback` | OAuth callback handler (returns JWT) |
 
 ### Memory Palaces
 | Method | Endpoint | Description |
