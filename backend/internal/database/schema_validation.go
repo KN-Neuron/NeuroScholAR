@@ -13,6 +13,7 @@ type schemaCheck struct {
 func ValidateRequiredSchema(db *sql.DB) error {
 	checks := []schemaCheck{
 		usersSchemaCheck(),
+		usersGoogleOAuthSchemaCheck(),
 	}
 
 	for _, c := range checks {

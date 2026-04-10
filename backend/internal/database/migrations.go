@@ -13,6 +13,7 @@ type migration struct {
 func RunMigrations(db *sql.DB) error {
 	migrations := []migration{
 		usersTableMigration(),
+		usersGoogleOAuthMigration(),
 	}
 
 	for _, m := range migrations {
