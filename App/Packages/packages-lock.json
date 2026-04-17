@@ -201,7 +201,7 @@
       "url": "https://packages.unity.com"
     },
     "com.unity.xr.arfoundation": {
-      "version": "6.3.3",
+      "version": "6.3.4",
       "depth": 0,
       "source": "registry",
       "dependencies": {
@@ -279,13 +279,20 @@
       "url": "https://packages.unity.com"
     },
     "com.xreal.xr": {
-      "version": "file:C:/Users/Tymek/Downloads/com.xreal.xr.tar.gz",
+      "version": "file:com.xreal.xr.tar.gz",
       "depth": 0,
       "source": "local-tarball",
       "dependencies": {
         "com.unity.xr.management": "4.4.1",
         "com.unity.xr.core-utils": "2.2.0"
       }
+    },
+    "com.yasirkula.nativeshare": {
+      "version": "https://github.com/yasirkula/UnityNativeShare.git",
+      "depth": 0,
+      "source": "git",
+      "dependencies": {},
+      "hash": "87dacbfa1d2123fe63706871ac56f161c3ba2f9d"
     },
     "com.unity.modules.accessibility": {
       "version": "1.0.0",
