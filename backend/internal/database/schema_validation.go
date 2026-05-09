@@ -14,6 +14,8 @@ func ValidateRequiredSchema(db *sql.DB) error {
 	checks := []schemaCheck{
 		usersSchemaCheck(),
 		usersGoogleOAuthSchemaCheck(),
+		memoryPalacesSchemaCheck(),
+		memoryPalaceObjectsSchemaCheck(),
 	}
 
 	for _, c := range checks {
