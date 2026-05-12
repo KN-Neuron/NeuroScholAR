@@ -16,6 +16,7 @@
     "com.unity.xr.hands": "1.7.3",
     "com.unity.xr.interaction.toolkit": "3.4.0",
     "com.unity.xr.management": "4.5.4",
+    "com.unity.xr.openxr": "1.16.1",
     "com.xreal.xr": "file:com.xreal.xr.tar.gz",
     "com.yasirkula.nativeshare": "https://github.com/yasirkula/UnityNativeShare.git",
     "com.unity.modules.accessibility": "1.0.0",
