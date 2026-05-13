@@ -1210,7 +1210,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 39376832dd3c9ef45961f1022d4cd463, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::InputSniffer
-  debugText: {fileID: 0}
 --- !u!1001 &611616339
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -1556,7 +1555,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Image
   m_Material: {fileID: 0}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
-  m_RaycastTarget: 1
+  m_RaycastTarget: 0
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
   m_OnCullStateChanged:
@@ -3244,10 +3243,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ea4941559749e6041ac32fb00fecee42, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PasswordToggle
-  passwordField: {fileID: 894254567}
-  buttonIcon: {fileID: 720803839}
-  eyeClosedIcon: {fileID: 21300000, guid: 968517f8f1338d749a8e7caf29c22780, type: 3}
-  eyeOpenIcon: {fileID: 21300000, guid: 7e5defc75a860a243af8f76dc5553b1c, type: 3}
+  passwordField: {fileID: 0}
+  buttonIcon: {fileID: 0}
+  eyeClosedIcon: {fileID: 0}
+  eyeOpenIcon: {fileID: 0}
 --- !u!114 &1885993451
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -4053,7 +4052,7 @@ MonoBehaviour:
   m_PlayHapticsOnHoverCanceled: 0
   m_HapticHoverCancelIntensity: 0
   m_HapticHoverCancelDuration: 0
-  m_AllowHoverHapticsWhileSelecting: 1
+  m_AllowHoverHapticsWhileSelecting: 0
   m_LineType: 0
   m_BlendVisualLinePoints: 1
   m_MaxRaycastDistance: 10
@@ -4898,7 +4897,7 @@ MonoBehaviour:
   m_PlayHapticsOnHoverCanceled: 0
   m_HapticHoverCancelIntensity: 0
   m_HapticHoverCancelDuration: 0
-  m_AllowHoverHapticsWhileSelecting: 1
+  m_AllowHoverHapticsWhileSelecting: 0
   m_LineType: 0
   m_BlendVisualLinePoints: 1
   m_MaxRaycastDistance: 10
