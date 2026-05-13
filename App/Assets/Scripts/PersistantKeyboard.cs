@@ -2,22 +2,56 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using TMPro;
 
-public class PersistentKeyboard : MonoBehaviour
+public class PersistantKeyboard : MonoBehaviour
 {
     private GameObject lastSelected;
+    private TMP_InputField activeInputField;
 
     void Update()
     {
-        // 1. If we are currently pointing at/clicking something, remember it
-        if (EventSystem.current.currentSelectedGameObject != null)
+        GameObject currentObj = EventSystem.current.currentSelectedGameObject;
+
+        if (currentObj != null)
         {
-            lastSelected = EventSystem.current.currentSelectedGameObject;
+            if (currentObj != lastSelected)
+            {
+                lastSelected = currentObj;
+
+                // if you click on the inputbox it will be selected and the keyboard will pop up 
+                TMP_InputField newInput = currentObj.GetComponent<TMP_InputField>();
+
+                if (newInput != null)
+                {
+                    if (activeInputField != null)
+                        activeInputField.onSubmit.RemoveListener(CloseKeyboard);
+
+                    activeInputField = newInput;
+                    activeInputField.onSubmit.AddListener(CloseKeyboard);
+                }
+                else
+                {
+                    // if you click a different button it should stop the keyboard from coming up
+                    activeInputField = null;
+                }
+            }
         }
-        // 2. If the laser disappears (becomes null) BUT we were just typing in a text box...
-        else if (lastSelected != null && lastSelected.GetComponent<TMP_InputField>() != null)
+        else if (lastSelected != null && activeInputField != null)
         {
-            // ...Force the EventSystem to keep the text box selected!
             EventSystem.current.SetSelectedGameObject(lastSelected);
         }
+    }
+
+    private void CloseKeyboard(string text)
+    {
+        // if the ok/checkbox button is pressed it should close the keyboard and deselect the input field
+        lastSelected = null;
+
+        if (activeInputField != null)
+        {
+            activeInputField.onSubmit.RemoveListener(CloseKeyboard);
+            activeInputField = null;
+        }
+
+        EventSystem.current.SetSelectedGameObject(null);
     }
 }
