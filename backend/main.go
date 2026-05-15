@@ -567,6 +567,17 @@ func main() {
 		})
 	})
 
+	auth := r.Group("/", authMiddleware())
+	auth.GET("/palaces", listPalacesHandler(db))
+	auth.POST("/palaces", createPalaceHandler(db))
+	auth.GET("/palaces/:id", getPalaceHandler(db))
+	auth.PUT("/palaces/:id", updatePalaceHandler(db))
+	auth.DELETE("/palaces/:id", deletePalaceHandler(db))
+	auth.GET("/palaces/:id/objects", listPalaceObjectsHandler(db))
+	auth.POST("/palaces/:id/objects", createPalaceObjectHandler(db))
+	auth.PUT("/objects/:objectId", updateObjectHandler(db))
+	auth.DELETE("/objects/:objectId", deleteObjectHandler(db))
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"

@@ -14,6 +14,9 @@ func RunMigrations(db *sql.DB) error {
 	migrations := []migration{
 		usersTableMigration(),
 		usersGoogleOAuthMigration(),
+		memoryPalacesTableMigration(),
+		memoryPalaceObjectsTableMigration(),
+		backfillMemoryPalaceElementsToObjectsMigration(),
 	}
 
 	for _, m := range migrations {
