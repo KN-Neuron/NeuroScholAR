@@ -1,5 +1,12 @@
 {
   "dependencies": {
+    "com.popupasylum.uguivertexeffect": {
+      "version": "https://github.com/markeahogan/UGUIVertexEffect.git",
+      "depth": 0,
+      "source": "git",
+      "dependencies": {},
+      "hash": "e87063d1fecb98e63a3ef5e06dcbe11751b7db17"
+    },
     "com.unity.2d.sprite": {
       "version": "1.0.0",
       "depth": 0,
