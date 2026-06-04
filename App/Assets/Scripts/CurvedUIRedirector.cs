@@ -32,14 +32,14 @@ public class CurvedUIRedirector : MonoBehaviour,
     {
         if (targetCanvas == null || dummyUICamera == null) return;
 
-        // 1. Check where the XR Ray hit the 3D cylinder
+        // Check where the XR Ray hit the 3D cylinder
         RaycastResult hit = eventData.pointerCurrentRaycast;
         if (hit.gameObject != this.gameObject) return;
 
-        // 2. Convert the global hit position into the Cylinder's local coordinate space
+        // Convert the global hit position into the Cylinder's local coordinate space
         Vector3 localHitPoint = transform.InverseTransformPoint(hit.worldPosition);
 
-        // 3. Calculate UV coordinates mathematically based on a standard Unity Cylinder geometry
+        // Calculate UV coordinates mathematically based on a standard Unity Cylinder geometry
         // Calculate the angle around the cylinder's Y-axis (-PI to PI)
         float angle = Mathf.Atan2(localHitPoint.x, localHitPoint.z);
 
@@ -52,13 +52,11 @@ public class CurvedUIRedirector : MonoBehaviour,
         // Apply our calibration variables to align the clicks with your visual canvas curve
         u = (u * horizontalScale) + horizontalOffset;
 
-        // 4. Convert that 0-1 coordinate to screen pixels for the Dummy Camera
         Vector2 screenPosition = new Vector2(
             u * dummyUICamera.pixelWidth,
             v * dummyUICamera.pixelHeight
         );
 
-        // 5. Create a fake "Mouse/Controller" event at that new 2D position
         PointerEventData fakeEventData = new PointerEventData(EventSystem.current)
         {
             position = screenPosition,
@@ -69,11 +67,11 @@ public class CurvedUIRedirector : MonoBehaviour,
             dragging = eventData.dragging
         };
 
-        // 6. Fire a Raycast against the flat Canvas UI
+        // Fire a Raycast against the flat Canvas UI
         List<RaycastResult> raycastResults = new List<RaycastResult>();
         EventSystem.current.RaycastAll(fakeEventData, raycastResults);
 
-        // 7. Execute the event on the correct UI element (Button, Input Field, etc.)
+        // Execute the event on the correct UI element (Button, Input Field, etc.)
         foreach (var result in raycastResults)
         {
             if (result.gameObject.transform.IsChildOf(targetCanvas.transform))
