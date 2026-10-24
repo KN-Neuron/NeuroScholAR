@@ -1,0 +1,11 @@
+{
+  "set_name": "Historia świata - daty",
+  "type": "term_date",
+  "pairs": [
+    { "id": "w1", "prompt": "Upadek Konstantynopola", "answer": "1453" },
+    { "id": "w2", "prompt": "Odkrycie Ameryki przez Kolumba", "answer": "1492" },
+    { "id": "w3", "prompt": "Rewolucja francuska", "answer": "1789" },
+    { "id": "w4", "prompt": "Lądowanie na Księżycu", "answer": "1969" },
+    { "id": "w5", "prompt": "Upadek muru berlińskiego", "answer": "1989" }
+  ]
+}

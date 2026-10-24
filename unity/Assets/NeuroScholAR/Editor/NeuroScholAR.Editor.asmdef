@@ -1,0 +1,25 @@
+{
+    "name": "NeuroScholAR.Editor",
+    "rootNamespace": "NeuroScholAR.Editor",
+    "references": [
+        "NeuroScholAR.App",
+        "NeuroScholAR.Core",
+        "Unity.InputSystem",
+        "Unity.XR.ARFoundation",
+        "Unity.XR.CoreUtils",
+        "Unity.XR.Management",
+        "Unity.XR.Management.Editor",
+        "UnityEngine.UI"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

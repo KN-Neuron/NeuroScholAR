@@ -1,0 +1,25 @@
+# Unity
+unity/[Ll]ibrary/
+unity/[Tt]emp/
+unity/[Oo]bj/
+unity/[Bb]uild/
+unity/[Ll]ogs/
+unity/[Uu]ser[Ss]ettings/
+unity/*.csproj
+unity/*.sln
+# .NET
+bin/
+obj/
+# Python
+backend/.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+backend/*.db
+backend/.env
+# local secrets / runtime config
+unity/Assets/StreamingAssets/appconfig.json
+vendor/
+unity/[Bb]uilds/
+unity/.utmp/
+*.apk
