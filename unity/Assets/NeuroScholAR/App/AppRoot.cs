@@ -27,6 +27,7 @@ namespace NeuroScholAR.App
         private Interactor _input;
         private Canvas _screens;
         private LazyFollow _screensFollow;
+        private static readonly Vector2 ScreensSize = new Vector2(900, 720); // onboarding / calibration / summary
         private OnboardingScreen _onboarding;
         private SetupScreen _setup;
         private CalibrationScreen _calibration;
@@ -78,7 +79,7 @@ namespace NeuroScholAR.App
             _input.Init(_camera, _session.Reticle);
             _dev = new DevOverlay(_camera, _app, _placer, _input);
 
-            _screens = Ui.WorldCanvas("Screens", world, new Vector2(900, 720), _camera);
+            _screens = Ui.WorldCanvas("Screens", world, ScreensSize, _camera);
             _screensFollow = _screens.gameObject.AddComponent<LazyFollow>();
             _screensFollow.Head = _camera.transform;
             _screensFollow.HeightOffset = -0.1f; // slightly below the eyes: comfortable to read and to poke
@@ -161,7 +162,9 @@ namespace NeuroScholAR.App
             _shownPhase = phase;
             var onboarding = _onboardingVisible && phase == AppPhase.Setup;
             _onboarding.SetVisible(onboarding);
-            _setup.SetVisible(!onboarding && phase == AppPhase.Setup);
+            var setup = !onboarding && phase == AppPhase.Setup;
+            _setup.SetVisible(setup);
+            Ui.SetCanvasSize(_screens, setup ? SetupScreen.CanvasSize : ScreensSize);
             _calibration.SetVisible(phase == AppPhase.Calibration);
             _summary.SetVisible(phase == AppPhase.Summary);
             _screens.gameObject.SetActive(phase != AppPhase.Session);

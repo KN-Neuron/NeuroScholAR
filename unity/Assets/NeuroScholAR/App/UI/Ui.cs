@@ -4,33 +4,70 @@ using UnityEngine.UI;
 
 namespace NeuroScholAR.App.UI
 {
-    /// <summary>
-    /// Tiny code-only UI kit (uGUI, legacy Text with the built-in font). Building UI in code keeps the
-    /// project free of hand-edited prefabs and makes every screen readable top to bottom in one file.
-    /// Units: canvases are laid out in "design millimetres" and shrunk by <see cref="WorldScale"/>, so panels
-    /// sit within arm's reach (for fingertip pokes) at about the angular size they had at 1.2 m.
-    /// </summary>
     public static class Ui
     {
-        public static readonly Color Background = new Color(0.08f, 0.09f, 0.13f, 0.92f);
-        public static readonly Color Panel = new Color(0.14f, 0.16f, 0.22f, 0.95f);
-        public static readonly Color Accent = new Color(0.25f, 0.55f, 0.95f);
-        public static readonly Color TextColor = new Color(0.93f, 0.94f, 0.97f);
-        public static readonly Color Muted = new Color(0.65f, 0.68f, 0.75f);
-        public static readonly Color Green = new Color(0.2f, 0.78f, 0.35f);
+        // GLASS & PANEL COLOR PALETTE
+        public static readonly Color Background = new Color(0.0f, 0.0f, 0.0f, 0.0f);
+        public static readonly Color Glass = new Color(0.10f, 0.12f, 0.18f, 0.75f);   // Translucent outer frame
+        public static readonly Color Panel = new Color(0.18f, 0.20f, 0.28f, 0.85f);   // Inner card background
+        public static readonly Color Accent = new Color(0.55f, 0.38f, 0.85f, 0.95f);  // Soft Violet / Purple
+        public static readonly Color TextColor = new Color(0.96f, 0.97f, 1.00f, 1.0f);
+        public static readonly Color Muted = new Color(0.72f, 0.75f, 0.82f, 0.85f);
+        public static readonly Color Green = new Color(0.24f, 0.78f, 0.45f, 0.95f);
         public static readonly Color Yellow = new Color(0.98f, 0.78f, 0.15f);
         public static readonly Color Red = new Color(0.92f, 0.26f, 0.24f);
 
-        /// <summary>Metres per canvas unit. 0.45 mm: a 900-unit panel is 40 cm wide, comfortable at 55 cm.</summary>
         public const float WorldScale = 0.00045f;
 
         private static Font _font;
         public static Font Font => _font ??= Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
 
-        /// <summary>
-        /// World-space canvas, sized in millimetres. Raycastable by touch and mouse; when
-        /// <paramref name="interactive"/>, also gets a thin collider so gaze, hand rays and fingertips find it.
-        /// </summary>
+        // Runtime 9-sliced rounded sprite generator
+        private static Sprite _roundedSprite;
+        public static Sprite RoundedSprite
+        {
+            get
+            {
+                if (_roundedSprite != null) return _roundedSprite;
+
+                int size = 64;
+                int radius = 16;
+                var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+                var colors = new Color32[size * size];
+
+                for (int y = 0; y < size; y++)
+                {
+                    for (int x = 0; x < size; x++)
+                    {
+                        float cx = x < radius ? radius - x : (x >= size - radius ? x - (size - 1 - radius) : 0);
+                        float cy = y < radius ? radius - y : (y >= size - radius ? y - (size - 1 - radius) : 0);
+                        float distSq = cx * cx + cy * cy;
+
+                        if (distSq > radius * radius)
+                        {
+                            colors[y * size + x] = new Color32(0, 0, 0, 0);
+                        }
+                        else if (distSq > (radius - 1.5f) * (radius - 1.5f))
+                        {
+                            float alpha = Mathf.Clamp01(radius - Mathf.Sqrt(distSq));
+                            byte a = (byte)(alpha * 255);
+                            colors[y * size + x] = new Color32(255, 255, 255, a);
+                        }
+                        else
+                        {
+                            colors[y * size + x] = new Color32(255, 255, 255, 255);
+                        }
+                    }
+                }
+
+                tex.SetPixels32(colors);
+                tex.Apply();
+                Vector4 border = new Vector4(radius, radius, radius, radius);
+                _roundedSprite = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f, 0, SpriteMeshType.FullRect, border);
+                return _roundedSprite;
+            }
+        }
+
         public static Canvas WorldCanvas(string name, Transform parent, Vector2 sizeMm, Camera eventCamera, bool interactive = true)
         {
             var go = new GameObject(name, typeof(RectTransform));
@@ -45,14 +82,27 @@ namespace NeuroScholAR.App.UI
             rect.localScale = Vector3.one * WorldScale;
             if (interactive)
             {
-                // Starts at the canvas plane and extends behind it: gaze rays hit the visible face, and a fingertip
-                // pushing a button "in" stays inside the collider.
                 var box = go.AddComponent<BoxCollider>();
                 box.size = new Vector3(sizeMm.x, sizeMm.y, 100);
                 box.center = new Vector3(0, 0, 50);
             }
-
             return canvas;
+        }
+
+        /// <summary>Resizes a world canvas made by <see cref="WorldCanvas"/>, keeping its touch collider in sync.</summary>
+        public static void SetCanvasSize(Canvas canvas, Vector2 sizeMm)
+        {
+            var rect = (RectTransform)canvas.transform;
+            if (rect.sizeDelta == sizeMm)
+            {
+                return;
+            }
+
+            rect.sizeDelta = sizeMm;
+            if (canvas.TryGetComponent<BoxCollider>(out var box))
+            {
+                box.size = new Vector3(sizeMm.x, sizeMm.y, 100);
+            }
         }
 
         public static RectTransform Rect(string name, Transform parent)
@@ -66,11 +116,12 @@ namespace NeuroScholAR.App.UI
         {
             var image = Rect(name, parent).gameObject.AddComponent<Image>();
             image.color = color;
+            image.sprite = RoundedSprite;
+            image.type = Image.Type.Sliced;
             return image;
         }
 
-        /// <summary>Vertical stack that sizes itself to its children.</summary>
-        public static RectTransform Column(string name, Transform parent, float spacing = 12, int padding = 0, Color? background = null)
+        public static RectTransform Column(string name, Transform parent, float spacing = 14, int padding = 20, Color? background = null)
         {
             var rect = background.HasValue ? Box(name, parent, background.Value).rectTransform : Rect(name, parent);
             var layout = rect.gameObject.AddComponent<VerticalLayoutGroup>();
@@ -110,16 +161,16 @@ namespace NeuroScholAR.App.UI
             return label;
         }
 
-        public static Button Button(Transform parent, string text, Action onClick, Color? color = null, float height = 64, int fontSize = 28)
+        public static Button Button(Transform parent, string text, Action onClick, Color? color = null, float height = 60, int fontSize = 24)
         {
             var image = Box("Button " + text, parent, color ?? Accent);
             var button = image.gameObject.AddComponent<Button>();
             var colors = button.colors;
-            colors.highlightedColor = new Color(1.25f, 1.25f, 1.25f); // gaze hover is visible
-            colors.pressedColor = new Color(0.8f, 0.8f, 0.8f);
-            colors.disabledColor = new Color(0.45f, 0.45f, 0.45f, 0.6f);
+            colors.highlightedColor = new Color(1.15f, 1.15f, 1.15f);
+            colors.pressedColor = new Color(0.85f, 0.85f, 0.85f);
+            colors.disabledColor = new Color(0.40f, 0.40f, 0.45f, 0.5f);
             button.colors = colors;
-            button.onClick.AddListener(() => onClick());
+            button.onClick.AddListener(() => onClick?.Invoke());
             image.gameObject.AddComponent<LayoutElement>().preferredHeight = height;
             var label = Label(image.transform, text, fontSize, Color.white, TextAnchor.MiddleCenter, FontStyle.Bold);
             Stretch(label.rectTransform);
@@ -128,14 +179,14 @@ namespace NeuroScholAR.App.UI
 
         public static void SetButtonText(Button button, string text) => button.GetComponentInChildren<Text>().text = text;
 
-        public static InputField Input(Transform parent, string placeholder, float height = 60)
+        public static InputField Input(Transform parent, string placeholder, float height = 56)
         {
-            var image = Box("Input", parent, new Color(1, 1, 1, 0.95f));
+            var image = Box("Input", parent, new Color(1, 1, 1, 0.90f));
             image.gameObject.AddComponent<LayoutElement>().preferredHeight = height;
-            var text = Label(image.transform, string.Empty, 26, Color.black);
+            var text = Label(image.transform, string.Empty, 24, Color.black);
             text.supportRichText = false;
             Stretch(text.rectTransform, 12);
-            var hint = Label(image.transform, placeholder, 26, new Color(0, 0, 0, 0.4f), style: FontStyle.Italic);
+            var hint = Label(image.transform, placeholder, 24, new Color(0, 0, 0, 0.45f), style: FontStyle.Italic);
             Stretch(hint.rectTransform, 12);
             var input = image.gameObject.AddComponent<InputField>();
             input.textComponent = text;
@@ -144,7 +195,6 @@ namespace NeuroScholAR.App.UI
             return input;
         }
 
-        /// <summary>Horizontal fill bar (0..1). Returns the fill image; set its color and call <see cref="SetFill"/>.</summary>
         public static Image Bar(Transform parent, float height, Color color)
         {
             var back = Box("Bar", parent, new Color(1, 1, 1, 0.15f));
@@ -178,7 +228,9 @@ namespace NeuroScholAR.App.UI
         {
             for (var i = t.childCount - 1; i >= 0; i--)
             {
-                UnityEngine.Object.Destroy(t.GetChild(i).gameObject);
+                var child = t.GetChild(i);
+                child.SetParent(null);
+                UnityEngine.Object.Destroy(child.gameObject);
             }
         }
 
