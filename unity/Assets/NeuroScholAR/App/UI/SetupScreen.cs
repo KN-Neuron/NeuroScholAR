@@ -36,6 +36,7 @@ namespace NeuroScholAR.App.UI
         private readonly RectTransform _fileList;
         private readonly Image _connectionLight;
 
+        private readonly Button _tutorial;
         private readonly Button _langToggle;
         private readonly Button _devToggle;
         private readonly Button _connect;
@@ -62,7 +63,8 @@ namespace NeuroScholAR.App.UI
         private bool _connecting;
         private const float MessageSeconds = 10f;
 
-        public SetupScreen(Transform canvas, SessionController app, bool useSimulator)
+        /// <param name="showTutorial">Reopens the onboarding slides (first-launch tutorial).</param>
+        public SetupScreen(Transform canvas, SessionController app, bool useSimulator, Action showTutorial)
         {
             _app = app;
             _useSimulator = useSimulator || !EegSources.DeviceAvailable;
@@ -80,6 +82,9 @@ namespace NeuroScholAR.App.UI
             var header = Ui.Row("Header", main, 12);
             _titleText = Ui.Label(header, "Przygotowanie sesji", 36, style: FontStyle.Bold);
             _titleText.gameObject.AddComponent<LayoutElement>().flexibleWidth = 3;
+
+            _tutorial = Ui.Button(header, "Samouczek", showTutorial, Ui.Panel, height: 44, fontSize: 18);
+            _tutorial.gameObject.GetComponent<LayoutElement>().preferredWidth = 150;
 
             _langToggle = Ui.Button(header, "PL / EN", ToggleLanguage, Ui.Panel, height: 44, fontSize: 18);
             var langLayout = _langToggle.gameObject.GetComponent<LayoutElement>();
@@ -196,6 +201,7 @@ namespace NeuroScholAR.App.UI
             Ui.SetButtonText(_manualDoneBtn, T("Gotowe", "Done"));
             Ui.SetButtonText(_manualCancelBtn, T("Anuluj", "Cancel"));
             Ui.SetButtonText(_devToggle, DevLabel());
+            Ui.SetButtonText(_tutorial, T("Samouczek", "Tutorial"));
 
             if (_manualName.placeholder is Text namePh) namePh.text = T("Nazwa zestawu", "Set Name");
             if (_manualPrompt.placeholder is Text promptPh) promptPh.text = T("Pojęcie / wydarzenie", "Term / Event");

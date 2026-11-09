@@ -83,10 +83,12 @@ namespace NeuroScholAR.App
             _screens = Ui.WorldCanvas("Screens", world, ScreensSize, _camera);
             _screensFollow = _screens.gameObject.AddComponent<LazyFollow>();
             _screensFollow.Head = _camera.transform;
-            _screensFollow.HeightOffset = -0.1f; // slightly below the eyes: comfortable to read and to poke
+            // Just below the eyes. Not lower: the glasses show only ~+-14 degrees vertically (+-0.16 m at 0.65 m), so a
+            // lower centre pushes the bottom row (where the buttons are) out of view.
+            _screensFollow.HeightOffset = -0.02f;
             _screensFollow.Distance = 0.65f;
             _onboarding = new OnboardingScreen(_screens.transform, () => ShowOnboarding(false));
-            _setup = new SetupScreen(_screens.transform, _app, config.UseSimulator);
+            _setup = new SetupScreen(_screens.transform, _app, config.UseSimulator, () => ShowOnboarding(true));
             _calibration = new CalibrationScreen(_screens.transform, _app, () => _calibration.Press(_clock.NowSeconds));
             _summary = new SummaryScreen(_screens.transform, _app, _exporter, () => _app.NewSession());
 
@@ -170,7 +172,7 @@ namespace NeuroScholAR.App
             _onboarding.SetVisible(onboarding);
             var setup = !onboarding && phase == AppPhase.Setup;
             _setup.SetVisible(setup);
-            Ui.SetCanvasSize(_screens, setup ? SetupScreen.CanvasSize : ScreensSize);
+            Ui.SetCanvasSize(_screens, setup ? SetupScreen.CanvasSize : onboarding ? OnboardingScreen.CanvasSize : ScreensSize);
             _calibration.SetVisible(phase == AppPhase.Calibration);
             _summary.SetVisible(phase == AppPhase.Summary);
             _screens.gameObject.SetActive(phase != AppPhase.Session);
