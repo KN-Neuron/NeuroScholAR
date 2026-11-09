@@ -62,7 +62,8 @@ namespace NeuroScholAR.App
             _placer.Completed += () =>
             {
                 _app.FinishPlacement();
-                _session.Toast("Wszystko rozmieszczone! Podchodź do przedmiotów i patrz na nie.", 6);
+                _session.Toast(Lang.T("Wszystko rozmieszczone! Podchodź do przedmiotów i patrz na nie.",
+                    "Everything placed! Walk up to the objects and look at them."), 6);
             };
             _input = gameObject.AddComponent<Interactor>();
             _input.ObjectSelected += i => _app.SelectObject(i);
@@ -210,10 +211,11 @@ namespace NeuroScholAR.App
                 switch (notice)
                 {
                     case Notice.ConnectionLost:
-                        _session.Toast("Utracono połączenie z opaską. Nauka trwa bez EEG, łączę ponownie…", 8);
+                        _session.Toast(Lang.T("Utracono połączenie z opaską. Nauka trwa bez EEG, łączę ponownie…",
+                            "Lost connection to the headband. Learning continues without EEG, reconnecting…"), 8);
                         break;
                     case Notice.Reconnected:
-                        _session.Toast("Opaska połączona ponownie.");
+                        _session.Toast(Lang.T("Opaska połączona ponownie.", "Headband reconnected."));
                         break;
                     case Notice.SuggestBreak:
                         _session.PendingPrompt = Modal.BreakPrompt;
@@ -222,19 +224,19 @@ namespace NeuroScholAR.App
                         _session.PendingPrompt = Modal.SessionLimit;
                         break;
                     case Notice.BreakEnded:
-                        _session.Toast("Koniec przerwy, wracamy do nauki.");
+                        _session.Toast(Lang.T("Koniec przerwy, wracamy do nauki.", "Break over, back to learning."));
                         break;
                     case Notice.SpeedUpOn:
-                        _session.Toast("Świetne skupienie! Przyspieszamy test.");
+                        _session.Toast(Lang.T("Świetne skupienie! Przyspieszamy test.", "Great focus! Speeding up the test."));
                         break;
                     case Notice.SpeedUpOff:
-                        _session.Toast("Wracamy do zwykłego tempa.");
+                        _session.Toast(Lang.T("Wracamy do zwykłego tempa.", "Back to the normal pace."));
                         break;
                     case Notice.AllViewed:
-                        _session.Toast("Wszystkie przedmioty obejrzane. Za chwilę test.");
+                        _session.Toast(Lang.T("Wszystkie przedmioty obejrzane. Za chwilę test.", "All objects viewed. The test starts soon."));
                         break;
                     case Notice.TestStarted:
-                        _session.Toast("Test! Znajdź przedmiot, przy którym było pokazane hasło.", 6);
+                        _session.Toast(Lang.T("Test! Znajdź przedmiot, przy którym było pokazane hasło.", "Test! Find the object where the term was shown."), 6);
                         break;
                     case Notice.CalibrationFailed:
                     case Notice.SessionFinished:

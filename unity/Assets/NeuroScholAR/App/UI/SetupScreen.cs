@@ -8,6 +8,7 @@ using NeuroScholAR.Core.Learning;
 using NeuroScholAR.Core.Session;
 using UnityEngine;
 using UnityEngine.UI;
+using static NeuroScholAR.App.UI.Lang;
 
 namespace NeuroScholAR.App.UI
 {
@@ -59,10 +60,7 @@ namespace NeuroScholAR.App.UI
 
         private bool _useSimulator;
         private bool _connecting;
-        public static bool IsEnglish = false;
         private const float MessageSeconds = 10f;
-
-        private static string T(string pl, string en) => IsEnglish ? en : pl;
 
         public SetupScreen(Transform canvas, SessionController app, bool useSimulator)
         {
@@ -178,7 +176,7 @@ namespace NeuroScholAR.App.UI
 
         private void ToggleLanguage()
         {
-            IsEnglish = !IsEnglish;
+            Lang.Toggle();
             UpdateTranslations();
             Refresh();
         }

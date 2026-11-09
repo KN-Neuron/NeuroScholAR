@@ -6,6 +6,7 @@ using NeuroScholAR.Core.Learning;
 using NeuroScholAR.Core.Session;
 using UnityEngine;
 using UnityEngine.UI;
+using static NeuroScholAR.App.UI.Lang;
 
 namespace NeuroScholAR.App.UI
 {
@@ -48,6 +49,7 @@ namespace NeuroScholAR.App.UI
         private readonly Button _testButton;
         private readonly Button _giveUpButton;
         private readonly Button _pauseButton;
+        private readonly Button _endButton;
 
         private readonly Canvas _dialogCanvas;
         private readonly LazyFollow _dialogFollow;
@@ -78,7 +80,7 @@ namespace NeuroScholAR.App.UI
             top.pivot = new Vector2(0.5f, 1);
             top.sizeDelta = new Vector2(0, 120);
             var focusRow = Ui.Row("Focus", top, 10);
-            _focusText = Ui.Label(focusRow, "Skupienie: —", 22);
+            _focusText = Ui.Label(focusRow, string.Empty, 22);
             _focusText.gameObject.AddComponent<LayoutElement>().preferredWidth = 220;
             _focusFill = Ui.Bar(focusRow, 22, Ui.Yellow);
             _focusFill.transform.parent.gameObject.AddComponent<LayoutElement>().flexibleWidth = 3;
@@ -108,11 +110,11 @@ namespace NeuroScholAR.App.UI
             var toolbar = Ui.WorldCanvas("Palm menu", worldRoot, new Vector2(300, 330), camera);
             var bar = Ui.Column("Buttons", toolbar.transform, 10, 10, Ui.Background);
             Ui.Stretch(bar);
-            _placeHereButton = Ui.Button(bar, "Rozmieść teraz", PlaceNow, Ui.Accent, 70, 22);
-            _testButton = Ui.Button(bar, "Zacznij test", () => _app.StartTest(), Ui.Accent, 70, 24);
-            _giveUpButton = Ui.Button(bar, "Nie pamiętam", () => _app.GiveUp(), Ui.Accent, 70, 24);
-            _pauseButton = Ui.Button(bar, "Pauza", TogglePause, Ui.Panel, 70, 24);
-            Ui.Button(bar, "Zakończ", () => _app.EndSession(), Ui.Red, 70, 24);
+            _placeHereButton = Ui.Button(bar, string.Empty, PlaceNow, Ui.Accent, 70, 22);
+            _testButton = Ui.Button(bar, string.Empty, () => _app.StartTest(), Ui.Accent, 70, 24);
+            _giveUpButton = Ui.Button(bar, string.Empty, () => _app.GiveUp(), Ui.Accent, 70, 24);
+            _pauseButton = Ui.Button(bar, string.Empty, TogglePause, Ui.Panel, 70, 24);
+            _endButton = Ui.Button(bar, string.Empty, () => _app.EndSession(), Ui.Red, 70, 24);
             _toolbar = toolbar.gameObject.AddComponent<PalmMenu>();
             _toolbar.Head = _head;
             _toolbar.Hands = hands;
@@ -148,6 +150,14 @@ namespace NeuroScholAR.App.UI
         {
             _hudTop.SetActive(visible);
             _toolbar.gameObject.SetActive(visible);
+            if (visible)
+            {
+                // Labels that Refresh doesn't rewrite; the language can only change on the setup screen.
+                Ui.SetButtonText(_testButton, T("Zacznij test", "Start test"));
+                Ui.SetButtonText(_giveUpButton, T("Nie pamiętam", "I don't remember"));
+                Ui.SetButtonText(_endButton, T("Zakończ", "End"));
+            }
+
             _task.text = string.Empty;
             _dialogCanvas.gameObject.SetActive(false);
             _shownModal = (Modal)(-1);
@@ -176,34 +186,38 @@ namespace NeuroScholAR.App.UI
         {
             var focus = _app.Focus;
             var level = _app.FocusLevel;
-            _focusText.text = focus.HasValue ? $"Skupienie: {focus.Value:F0}%" : _app.EegEnabledForSession ? "Skupienie: brak sygnału" : "Skupienie: bez EEG";
+            _focusText.text = T("Skupienie: ", "Focus: ") + (focus.HasValue ? $"{focus.Value:F0}%"
+                : _app.EegEnabledForSession ? T("brak sygnału", "no signal") : T("bez EEG", "no EEG"));
             Ui.SetFill(_focusFill, focus.HasValue ? (float)focus.Value / 100f : 0);
             _focusFill.color = level == FocusLevel.High ? Ui.Green : level == FocusLevel.Medium ? Ui.Yellow : Ui.Red;
 
             var palace = _app.Palace;
-            _timer.text = Ui.Clock(_app.SessionSeconds) + (_app.SpeedUp ? "  (tempo+)" : string.Empty);
+            _timer.text = Ui.Clock(_app.SessionSeconds) + (_app.SpeedUp ? T("  (tempo+)", "  (speed+)") : string.Empty);
+            var total = palace?.Objects.Count ?? 0;
             _progress.text = palace == null ? string.Empty
-                : palace.Mode == PalaceMode.Preparation ? $"Rozmieszczone: {_placer.PlacedCount}/{palace.Objects.Count}"
-                : palace.Mode == PalaceMode.Learning ? $"Obejrzane: {palace.ViewedCount}/{palace.Objects.Count}"
-                : $"Test: {palace.Answers.Count} odp., opanowane {palace.MasteredCount}/{palace.Objects.Count}";
+                : palace.Mode == PalaceMode.Preparation ? T("Rozmieszczone: ", "Placed: ") + $"{_placer.PlacedCount}/{total}"
+                : palace.Mode == PalaceMode.Learning ? T("Obejrzane: ", "Viewed: ") + $"{palace.ViewedCount}/{total}"
+                : T($"Test: {palace.Answers.Count} odp., opanowane {palace.MasteredCount}/{total}",
+                    $"Test: {palace.Answers.Count} answers, mastered {palace.MasteredCount}/{total}");
 
             var light = _app.Light;
             _linkLight.color = light == ConnectionLight.Green ? Ui.Green : light == ConnectionLight.Yellow ? Ui.Yellow : Ui.Red;
-            _linkText.text = _app.Connection?.State == EegConnectionState.Reconnecting ? "EEG: łączenie ponowne…"
+            _linkText.text = _app.Connection?.State == EegConnectionState.Reconnecting ? T("EEG: łączenie ponowne…", "EEG: reconnecting…")
                 : _app.EegStreaming ? SetupScreen.ElectrodeText(_app.ChannelNames, _app.ContactOk, true)
-                : "EEG wyłączone";
+                : T("EEG wyłączone", "EEG off");
 
             var mode = palace?.Mode ?? PalaceMode.Finished;
             _placeHereButton.gameObject.SetActive(mode == PalaceMode.Preparation);
-            Ui.SetButtonText(_placeHereButton, _placer.IsScanning ? "Rozmieść teraz" : "Rozmieść resztę tutaj");
+            Ui.SetButtonText(_placeHereButton, _placer.IsScanning ? T("Rozmieść teraz", "Place now") : T("Rozmieść resztę tutaj", "Place the rest here"));
             _testButton.gameObject.SetActive(mode == PalaceMode.Learning);
             _giveUpButton.gameObject.SetActive(mode == PalaceMode.Test && palace.Step == TestStep.Find);
-            Ui.SetButtonText(_pauseButton, _app.IsPaused ? "Wznów" : "Pauza");
+            Ui.SetButtonText(_pauseButton, _app.IsPaused ? T("Wznów", "Resume") : T("Pauza", "Pause"));
             _task.text = palace == null || _app.IsPaused ? string.Empty : TaskText(palace);
 
             if (_shownModal == Modal.Break)
             {
-                _dialogBody.text = $"Odpocznij, rozluźnij wzrok. Zostało {Ui.Clock(_app.BreakTimeLeft)}.";
+                _dialogBody.text = T($"Odpocznij, rozluźnij wzrok. Zostało {Ui.Clock(_app.BreakTimeLeft)}.",
+                    $"Rest and relax your eyes. {Ui.Clock(_app.BreakTimeLeft)} left.");
             }
         }
 
@@ -213,23 +227,26 @@ namespace NeuroScholAR.App.UI
             switch (palace.Mode)
             {
                 case PalaceMode.Preparation when _placer.IsScanning && _placer.HasPlaneDetection:
-                    return "Obejdź cały pokój i rozglądaj się (meble, podłoga, ściany). " +
-                           $"Znalezione powierzchnie: {_placer.SurfaceCount}. Rozmieszczę przedmioty za {_placer.ScanSecondsLeft:F0} s.\n" +
-                           "Spójrz na lewą dłoń, aby otworzyć menu.";
+                    return T("Obejdź cały pokój i rozglądaj się (meble, podłoga, ściany). " +
+                             $"Znalezione powierzchnie: {_placer.SurfaceCount}. Rozmieszczę przedmioty za {_placer.ScanSecondsLeft:F0} s.\n" +
+                             "Spójrz na lewą dłoń, aby otworzyć menu.",
+                        "Walk around the whole room and look around (furniture, floor, walls). " +
+                        $"Surfaces found: {_placer.SurfaceCount}. Placing objects in {_placer.ScanSecondsLeft:F0} s.\n" +
+                        "Look at your left palm to open the menu.");
                 case PalaceMode.Preparation:
                     return _placer.HasPlaneDetection
-                        ? "Rozmieszczam przedmioty po całym pokoju…"
-                        : "Rozmieszczam przedmioty wokół Ciebie…";
+                        ? T("Rozmieszczam przedmioty po całym pokoju…", "Placing objects around the room…")
+                        : T("Rozmieszczam przedmioty wokół Ciebie…", "Placing objects around you…");
                 case PalaceMode.Learning:
                     var startsIn = _app.TestStartsIn;
                     return startsIn.HasValue
-                        ? $"Wszystko obejrzane. Test za {startsIn.Value:F0} s."
-                        : "Podejdź do przedmiotów i patrz na nie, aby poznać ich hasła.";
+                        ? T($"Wszystko obejrzane. Test za {startsIn.Value:F0} s.", $"All viewed. Test in {startsIn.Value:F0} s.")
+                        : T("Podejdź do przedmiotów i patrz na nie, aby poznać ich hasła.", "Walk up to the objects and look at them to learn their terms.");
                 case PalaceMode.Test when palace.Step == TestStep.Find:
-                    return $"Znajdź: {palace.Objects[palace.CurrentObject].Prompt}  ({_app.AnswerTimeLeft:F0} s)\n" +
-                           "Podejdź do tego przedmiotu i dotknij go palcem.";
+                    return T("Znajdź: ", "Find: ") + $"{palace.Objects[palace.CurrentObject].Prompt}  ({_app.AnswerTimeLeft:F0} s)\n" +
+                           T("Podejdź do tego przedmiotu i dotknij go palcem.", "Walk up to that object and touch it with your finger.");
                 case PalaceMode.Test when palace.Step == TestStep.Feedback:
-                    return palace.LastCorrect ? "Dobrze!" : "To nie ten. Właściwy przedmiot świeci.";
+                    return palace.LastCorrect ? T("Dobrze!", "Correct!") : T("To nie ten. Właściwy przedmiot świeci.", "Not that one. The right object is glowing.");
                 default:
                     return string.Empty;
             }
@@ -317,20 +334,24 @@ namespace NeuroScholAR.App.UI
             switch (modal)
             {
                 case Modal.BreakPrompt:
-                    Dialog("Może czas na krótką przerwę?", "Twoje skupienie od dłuższej chwili jest niskie.",
-                        "5-minutowa przerwa", () => AnswerPrompt(() => _app.AnswerBreakPrompt(true)),
-                        "Kontynuuj mimo wszystko", () => AnswerPrompt(() => _app.AnswerBreakPrompt(false)));
+                    Dialog(T("Może czas na krótką przerwę?", "Time for a short break?"),
+                        T("Twoje skupienie od dłuższej chwili jest niskie.", "Your focus has been low for a while."),
+                        T("5-minutowa przerwa", "5-minute break"), () => AnswerPrompt(() => _app.AnswerBreakPrompt(true)),
+                        T("Kontynuuj mimo wszystko", "Keep going anyway"), () => AnswerPrompt(() => _app.AnswerBreakPrompt(false)));
                     break;
                 case Modal.SessionLimit:
-                    Dialog("Sesja trwa już 25 minut", "Dłuższa nauka bez przerwy zwykle mniej daje. Zakończyć i zobaczyć podsumowanie?",
-                        "Zakończ sesję", () => AnswerPrompt(_app.EndSession),
-                        "Jeszcze chwilę", () => AnswerPrompt(null));
+                    Dialog(T("Sesja trwa już 25 minut", "You've been learning for 25 minutes"),
+                        T("Dłuższa nauka bez przerwy zwykle mniej daje. Zakończyć i zobaczyć podsumowanie?",
+                            "Studying longer without a break usually helps less. End and see the summary?"),
+                        T("Zakończ sesję", "End session"), () => AnswerPrompt(_app.EndSession),
+                        T("Jeszcze chwilę", "A bit longer"), () => AnswerPrompt(null));
                     break;
                 case Modal.Break:
-                    Dialog("Przerwa", string.Empty, "Wróć do nauki", _app.EndBreak, null, null);
+                    Dialog(T("Przerwa", "Break"), string.Empty, T("Wróć do nauki", "Back to learning"), _app.EndBreak, null, null);
                     break;
                 case Modal.Pause:
-                    Dialog("Pauza", "Czas sesji jest wstrzymany.", "Wznów", _app.Resume, "Zakończ", _app.EndSession);
+                    Dialog(T("Pauza", "Paused"), T("Czas sesji jest wstrzymany.", "The session timer is paused."),
+                        T("Wznów", "Resume"), _app.Resume, T("Zakończ", "End"), _app.EndSession);
                     break;
             }
         }
