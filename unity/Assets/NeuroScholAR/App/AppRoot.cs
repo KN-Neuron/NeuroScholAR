@@ -118,9 +118,14 @@ namespace NeuroScholAR.App
             {
                 _calibration.Animate(_clock.NowSeconds);
             }
-            else if (_app.Phase == AppPhase.Session)
+
+            if (_app.Phase == AppPhase.Session)
             {
                 _session.Tick();
+            }
+            else
+            {
+                _session.TickToast(); // toasts can show on any screen
             }
 
             if (Time.unscaledTime >= _nextRefresh)

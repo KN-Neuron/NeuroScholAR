@@ -21,28 +21,48 @@ namespace NeuroScholAR.App.UI
     }
 
     /// <summary>
-    /// Everything shown during the AR session: head-locked HUD (focus bar, timer, progress, link status,
-    /// current task, reticle, toasts), the session menu on the left palm, the palace objects' labels and highlights, and
+    /// Everything shown during the AR session: head-locked HUD (status pill with focus, timer and progress; toast pill;
+    /// task card; reticle), the session menu on the left palm, the palace objects' labels and highlights, and
     /// modal dialogs. Pure presentation of <see cref="SessionController"/> state; text is rebuilt only when it
-    /// changes or at a low rate.
+    /// changes or at a low rate. All HUD panels are faint glass so the room and the palace objects stay visible.
     /// </summary>
     public sealed class SessionViews
     {
+        private const float ToastFadeIn = 0.25f;
+        private const float ToastFadeOut = 0.5f;
+        private const float ToastMaxWidth = 620;
+        private const int TaskTextSize = 26;
+        private const int TaskTermSize = 34; // the term to find is what the user searches for: largest text on the HUD
+
         private readonly SessionController _app;
         private readonly Transform _head;
         private readonly PalaceRoom _room;
         private readonly SurfacePlacer _placer;
 
+        // Status pill
         private readonly GameObject _hudTop;
-        private readonly Image _focusFill;
+        private readonly Image _linkLight;
+        private readonly Text _focusLabel;
         private readonly Text _focusText;
+        private readonly GameObject _focusBar;
+        private readonly Image _focusFill;
         private readonly Text _timer;
         private readonly Text _progress;
-        private readonly Image _linkLight;
-        private readonly Text _linkText;
+
+        // Toast pill
         private readonly Text _toast;
-        private readonly Text _task;
+        private readonly LayoutElement _toastWidth;
+        private readonly CanvasGroup _toastGroup;
+        private float _toastShownAt;
         private float _toastUntil;
+
+        // Task card
+        private readonly GameObject _taskCard;
+        private readonly Text _taskMode;
+        private readonly Text _taskMain;
+        private readonly Text _taskHint;
+        private readonly GameObject _answerBar;
+        private readonly Image _answerFill;
 
         private readonly PalmMenu _toolbar;
         private readonly Button _placeHereButton;
@@ -69,37 +89,61 @@ namespace NeuroScholAR.App.UI
             _placer = placer;
 
             // ---- HUD: head-locked, display only (the reticle can't reach things that move with the head) ----
+            // 760 x 440 units at 1.2 m: about 35 x 21 degrees, inside the glasses' view. The middle stays empty for the room.
             var hud = Ui.WorldCanvas("HUD", _head, new Vector2(760, 440), camera, interactive: false);
             hud.transform.localPosition = new Vector3(0, 0, 1.2f);
             hud.transform.localScale = Vector3.one * 0.001f; // display only, so it stays far (easier on the eyes) and keeps its size
             hud.sortingOrder = 10;
-            var top = Ui.Column("Top", hud.transform, 6, 10, new Color(0, 0, 0, 0.45f));
-            _hudTop = top.gameObject;
-            top.anchorMin = new Vector2(0, 1);
-            top.anchorMax = new Vector2(1, 1);
-            top.pivot = new Vector2(0.5f, 1);
-            top.sizeDelta = new Vector2(0, 120);
-            var focusRow = Ui.Row("Focus", top, 10);
-            _focusText = Ui.Label(focusRow, string.Empty, 22);
-            _focusText.gameObject.AddComponent<LayoutElement>().preferredWidth = 220;
-            _focusFill = Ui.Bar(focusRow, 22, Ui.Yellow);
-            _focusFill.transform.parent.gameObject.AddComponent<LayoutElement>().flexibleWidth = 3;
-            var infoRow = Ui.Row("Info", top, 10);
-            _timer = Ui.Label(infoRow, "00:00", 22);
-            _progress = Ui.Label(infoRow, string.Empty, 22);
-            _linkLight = Ui.Box("Link", infoRow, Ui.Red);
-            var lightLayout = _linkLight.gameObject.AddComponent<LayoutElement>();
-            lightLayout.preferredWidth = lightLayout.minWidth = 18;
-            lightLayout.flexibleWidth = 0;
-            _linkText = Ui.Label(infoRow, string.Empty, 18, Ui.Muted);
 
-            _toast = Ui.Label(hud.transform, string.Empty, 24, Ui.Yellow, TextAnchor.MiddleCenter, FontStyle.Bold);
-            _toast.rectTransform.anchoredPosition = new Vector2(0, 60);
-            _toast.rectTransform.sizeDelta = new Vector2(700, 80);
+            // Status pill, top centre: link dot · focus · bar · timer · progress. Width follows its content.
+            var status = Ui.Card("Status", hud.transform, Ui.Panel, 24, 20, 0, 10, horizontal: true);
+            _hudTop = status.gameObject;
+            status.anchorMin = status.anchorMax = new Vector2(0.5f, 1);
+            status.pivot = new Vector2(0.5f, 1);
+            status.anchoredPosition = new Vector2(0, -16);
+            status.sizeDelta = new Vector2(0, 48);
+            status.gameObject.AddComponent<ContentSizeFitter>().horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
 
-            _task = Ui.Label(hud.transform, string.Empty, 26, Color.white, TextAnchor.MiddleCenter, FontStyle.Bold);
-            _task.rectTransform.anchoredPosition = new Vector2(0, -150);
-            _task.rectTransform.sizeDelta = new Vector2(740, 110);
+            _linkLight = Ui.Box("Link", status, Ui.Red);
+            _linkLight.raycastTarget = false;
+            Ui.Corners(_linkLight, 7);
+            var dot = _linkLight.gameObject.AddComponent<LayoutElement>();
+            dot.preferredWidth = dot.minWidth = dot.preferredHeight = 14;
+            _focusLabel = Ui.Label(status, string.Empty, 18, Ui.Muted);
+            _focusText = Ui.Label(status, string.Empty, 22, style: FontStyle.Bold);
+            _focusFill = Ui.Bar(status, 8, Ui.Accent);
+            _focusBar = _focusFill.transform.parent.gameObject;
+            _focusBar.GetComponent<LayoutElement>().preferredWidth = 90;
+            Separator(status);
+            _timer = Ui.Label(status, "00:00", 22);
+            Separator(status);
+            _progress = Ui.Label(status, string.Empty, 20);
+
+            // Toast pill, just under the status pill; fades in and out.
+            var toast = Ui.Card("Toast", hud.transform, new Color(Ui.Accent.r, Ui.Accent.g, Ui.Accent.b, 0.45f), 22, 22, 10, 0, horizontal: true);
+            toast.anchorMin = toast.anchorMax = new Vector2(0.5f, 1);
+            toast.pivot = new Vector2(0.5f, 1);
+            toast.anchoredPosition = new Vector2(0, -78);
+            var toastFit = toast.gameObject.AddComponent<ContentSizeFitter>();
+            toastFit.horizontalFit = toastFit.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            _toastGroup = toast.gameObject.AddComponent<CanvasGroup>();
+            _toastGroup.alpha = 0;
+            _toast = Ui.Label(toast, string.Empty, 22, Color.white, TextAnchor.MiddleCenter, FontStyle.Bold);
+            _toastWidth = _toast.gameObject.AddComponent<LayoutElement>();
+
+            // Task card, below the reticle: small mode label, main line, muted hint, answer-time bar in the test.
+            var task = Ui.Card("Task", hud.transform, Ui.Panel, 20, 22, 14, 4, horizontal: false);
+            _taskCard = task.gameObject;
+            task.anchorMin = task.anchorMax = new Vector2(0.5f, 0.5f);
+            task.pivot = new Vector2(0.5f, 1);
+            task.anchoredPosition = new Vector2(0, -80);
+            task.sizeDelta = new Vector2(560, 0);
+            task.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            _taskMode = Ui.Label(task, string.Empty, 16, Ui.AccentSoft, style: FontStyle.Bold);
+            _taskMain = Ui.Label(task, string.Empty, TaskTextSize, style: FontStyle.Bold);
+            _taskHint = Ui.Label(task, string.Empty, 19, Ui.Muted);
+            _answerFill = Ui.Bar(task, 6, Ui.Accent);
+            _answerBar = _answerFill.transform.parent.gameObject;
 
             var reticle = Ui.Box("Reticle", hud.transform, new Color(1, 1, 1, 0.9f));
             reticle.rectTransform.sizeDelta = new Vector2(10, 10);
@@ -129,13 +173,13 @@ namespace NeuroScholAR.App.UI
             // (620 units * 0.45 mm = 28 cm wide at 60 cm: about +-13 degrees).
             _dialogFollow.FollowGaze = true;
             _dialogFollow.Threshold = 15f;
-            var dialog = Ui.Column("Body", _dialogCanvas.transform, 12, 24, Ui.Panel);
+            var dialog = Ui.Column("Body", _dialogCanvas.transform, 12, 24, Ui.Panel, edge: true);
             Ui.Stretch(dialog);
             _dialogTitle = Ui.Label(dialog, string.Empty, 32, style: FontStyle.Bold);
             _dialogBody = Ui.Label(dialog, string.Empty, 26);
             var dialogRow = Ui.Row("Buttons", dialog, 12);
             _dialogA = Ui.Button(dialogRow, string.Empty, () => _dialogActionA?.Invoke(), Ui.Accent, 64, 24);
-            _dialogB = Ui.Button(dialogRow, string.Empty, () => _dialogActionB?.Invoke(), Ui.Panel, 64, 24);
+            _dialogB = Ui.Button(dialogRow, string.Empty, () => _dialogActionB?.Invoke(), Ui.Raised, 64, 24);
 
             SetVisible(false);
         }
@@ -153,12 +197,13 @@ namespace NeuroScholAR.App.UI
             if (visible)
             {
                 // Labels that Refresh doesn't rewrite; the language can only change on the setup screen.
+                _focusLabel.text = T("Skupienie", "Focus");
                 Ui.SetButtonText(_testButton, T("Zacznij test", "Start test"));
                 Ui.SetButtonText(_giveUpButton, T("Nie pamiętam", "I don't remember"));
                 Ui.SetButtonText(_endButton, T("Zakończ", "End"));
             }
 
-            _task.text = string.Empty;
+            _taskCard.SetActive(false);
             _dialogCanvas.gameObject.SetActive(false);
             _shownModal = (Modal)(-1);
         }
@@ -166,45 +211,68 @@ namespace NeuroScholAR.App.UI
         public void Toast(string text, float seconds = 4)
         {
             _toast.text = text;
+            _toastWidth.preferredWidth = Mathf.Min(_toast.preferredWidth, ToastMaxWidth); // short toasts stay a small pill, long ones wrap
+            _toastShownAt = Time.time;
             _toastUntil = Time.time + seconds;
         }
 
-        /// <summary>Every frame: objects and dialog state (cheap unless something changed), toast expiry.</summary>
+        /// <summary>Every frame: objects, dialog state (cheap unless something changed), toast fade, answer-time bar.</summary>
         public void Tick()
         {
-            if (_toast.text.Length > 0 && Time.time > _toastUntil)
-            {
-                _toast.text = string.Empty;
-            }
-
+            TickToast();
             SyncObjects();
             UpdateModal();
+
+            if (_answerBar.activeSelf)
+            {
+                var left = (float)(_app.AnswerTimeLeft / _app.AdaptiveConfig.AnswerTime(_app.SpeedUp));
+                Ui.SetFill(_answerFill, left);
+                _answerFill.color = left < 0.25f ? Ui.Yellow : Ui.Accent;
+            }
+        }
+
+        /// <summary>Toast fade in/out. Also called outside the session, since toasts show on every screen.</summary>
+        public void TickToast()
+        {
+            if (_toast.text.Length == 0)
+            {
+                return;
+            }
+
+            var now = Time.time;
+            if (now > _toastUntil)
+            {
+                _toast.text = string.Empty;
+                _toastGroup.alpha = 0;
+                return;
+            }
+
+            _toastGroup.alpha = Mathf.Clamp01((now - _toastShownAt) / ToastFadeIn) * Mathf.Clamp01((_toastUntil - now) / ToastFadeOut);
         }
 
         /// <summary>A few times per second: numbers on the HUD.</summary>
         public void Refresh()
         {
             var focus = _app.Focus;
-            var level = _app.FocusLevel;
-            _focusText.text = T("Skupienie: ", "Focus: ") + (focus.HasValue ? $"{focus.Value:F0}%"
-                : _app.EegEnabledForSession ? T("brak sygnału", "no signal") : T("bez EEG", "no EEG"));
+            var reconnecting = _app.Connection?.State == EegConnectionState.Reconnecting;
+            _focusText.text = focus.HasValue ? $"{focus.Value:F0}%"
+                : reconnecting ? T("łączenie…", "reconnecting…")
+                : _app.EegEnabledForSession ? T("brak sygnału", "no signal")
+                : T("bez EEG", "no EEG");
+            _focusBar.SetActive(focus.HasValue);
             Ui.SetFill(_focusFill, focus.HasValue ? (float)focus.Value / 100f : 0);
-            _focusFill.color = level == FocusLevel.High ? Ui.Green : level == FocusLevel.Medium ? Ui.Yellow : Ui.Red;
-
-            var palace = _app.Palace;
-            _timer.text = Ui.Clock(_app.SessionSeconds) + (_app.SpeedUp ? T("  (tempo+)", "  (speed+)") : string.Empty);
-            var total = palace?.Objects.Count ?? 0;
-            _progress.text = palace == null ? string.Empty
-                : palace.Mode == PalaceMode.Preparation ? T("Rozmieszczone: ", "Placed: ") + $"{_placer.PlacedCount}/{total}"
-                : palace.Mode == PalaceMode.Learning ? T("Obejrzane: ", "Viewed: ") + $"{palace.ViewedCount}/{total}"
-                : T($"Test: {palace.Answers.Count} odp., opanowane {palace.MasteredCount}/{total}",
-                    $"Test: {palace.Answers.Count} answers, mastered {palace.MasteredCount}/{total}");
+            _focusFill.color = _app.FocusLevel == FocusLevel.Low ? Ui.Yellow : Ui.Accent; // calm purple, amber only when low
 
             var light = _app.Light;
             _linkLight.color = light == ConnectionLight.Green ? Ui.Green : light == ConnectionLight.Yellow ? Ui.Yellow : Ui.Red;
-            _linkText.text = _app.Connection?.State == EegConnectionState.Reconnecting ? T("EEG: łączenie ponowne…", "EEG: reconnecting…")
-                : _app.EegStreaming ? SetupScreen.ElectrodeText(_app.ChannelNames, _app.ContactOk, true)
-                : T("EEG wyłączone", "EEG off");
+
+            var palace = _app.Palace;
+            _timer.text = Ui.Clock(_app.SessionSeconds) + (_app.SpeedUp ? T("  tempo+", "  speed+") : string.Empty);
+            var total = palace?.Objects.Count ?? 0;
+            _progress.text = palace == null ? string.Empty
+                : palace.Mode == PalaceMode.Preparation ? T("Rozmieszczone ", "Placed ") + $"{_placer.PlacedCount}/{total}"
+                : palace.Mode == PalaceMode.Learning ? T("Obejrzane ", "Viewed ") + $"{palace.ViewedCount}/{total}"
+                : T("Opanowane ", "Mastered ") + $"{palace.MasteredCount}/{total}";
 
             var mode = palace?.Mode ?? PalaceMode.Finished;
             _placeHereButton.gameObject.SetActive(mode == PalaceMode.Preparation);
@@ -212,7 +280,7 @@ namespace NeuroScholAR.App.UI
             _testButton.gameObject.SetActive(mode == PalaceMode.Learning);
             _giveUpButton.gameObject.SetActive(mode == PalaceMode.Test && palace.Step == TestStep.Find);
             Ui.SetButtonText(_pauseButton, _app.IsPaused ? T("Wznów", "Resume") : T("Pauza", "Pause"));
-            _task.text = palace == null || _app.IsPaused ? string.Empty : TaskText(palace);
+            _taskCard.SetActive(palace != null && !_app.IsPaused && ShowTask(palace));
 
             if (_shownModal == Modal.Break)
             {
@@ -221,36 +289,70 @@ namespace NeuroScholAR.App.UI
             }
         }
 
-        /// <summary>What the user should do now, in one line under their view.</summary>
-        private string TaskText(PalaceSession palace)
+        /// <summary>Fills the task card with what the user should do now. False when there is nothing to show.</summary>
+        private bool ShowTask(PalaceSession palace)
         {
             switch (palace.Mode)
             {
                 case PalaceMode.Preparation when _placer.IsScanning && _placer.HasPlaneDetection:
-                    return T("Obejdź cały pokój i rozglądaj się (meble, podłoga, ściany). " +
-                             $"Znalezione powierzchnie: {_placer.SurfaceCount}. Rozmieszczę przedmioty za {_placer.ScanSecondsLeft:F0} s.\n" +
-                             "Spójrz na lewą dłoń, aby otworzyć menu.",
-                        "Walk around the whole room and look around (furniture, floor, walls). " +
-                        $"Surfaces found: {_placer.SurfaceCount}. Placing objects in {_placer.ScanSecondsLeft:F0} s.\n" +
-                        "Look at your left palm to open the menu.");
+                    SetTask(T("SKANOWANIE POKOJU", "ROOM SCAN"),
+                        T("Obejdź pokój i rozglądaj się", "Walk around the room and look around"),
+                        T($"Meble, podłoga, ściany · znalezione powierzchnie: {_placer.SurfaceCount} · rozmieszczę za {_placer.ScanSecondsLeft:F0} s\nMenu: spójrz na lewą dłoń.",
+                            $"Furniture, floor, walls · surfaces found: {_placer.SurfaceCount} · placing in {_placer.ScanSecondsLeft:F0} s\nMenu: look at your left palm."));
+                    return true;
                 case PalaceMode.Preparation:
-                    return _placer.HasPlaneDetection
-                        ? T("Rozmieszczam przedmioty po całym pokoju…", "Placing objects around the room…")
-                        : T("Rozmieszczam przedmioty wokół Ciebie…", "Placing objects around you…");
+                    SetTask(T("ROZMIESZCZANIE", "PLACING"),
+                        _placer.HasPlaneDetection
+                            ? T("Rozmieszczam przedmioty po całym pokoju…", "Placing objects around the room…")
+                            : T("Rozmieszczam przedmioty wokół Ciebie…", "Placing objects around you…"));
+                    return true;
                 case PalaceMode.Learning:
                     var startsIn = _app.TestStartsIn;
-                    return startsIn.HasValue
-                        ? T($"Wszystko obejrzane. Test za {startsIn.Value:F0} s.", $"All viewed. Test in {startsIn.Value:F0} s.")
-                        : T("Podejdź do przedmiotów i patrz na nie, aby poznać ich hasła.", "Walk up to the objects and look at them to learn their terms.");
+                    if (startsIn.HasValue)
+                    {
+                        SetTask(T("NAUKA", "LEARNING"), T("Wszystko obejrzane", "All viewed"),
+                            T($"Test za {startsIn.Value:F0} s", $"Test in {startsIn.Value:F0} s"));
+                    }
+                    else
+                    {
+                        SetTask(T("NAUKA", "LEARNING"), T("Podejdź do przedmiotów i patrz na nie", "Walk up to the objects and look at them"),
+                            T("Każdy przedmiot pokaże swoją parę. Menu: spójrz na lewą dłoń.", "Each object shows its pair. Menu: look at your left palm."));
+                    }
+
+                    return true;
                 case PalaceMode.Test when palace.Step == TestStep.Find:
-                    return T("Znajdź: ", "Find: ") + $"{palace.Objects[palace.CurrentObject].Prompt}  ({_app.AnswerTimeLeft:F0} s)\n" +
-                           T("Podejdź do tego przedmiotu i dotknij go palcem.", "Walk up to that object and touch it with your finger.");
+                    SetTask(T("TEST · ZNAJDŹ", "TEST · FIND"), palace.Objects[palace.CurrentObject].Prompt,
+                        T("Podejdź do tego przedmiotu i dotknij go palcem.", "Walk up to that object and touch it with your finger."),
+                        size: TaskTermSize, answerBar: true);
+                    return true;
                 case PalaceMode.Test when palace.Step == TestStep.Feedback:
-                    return palace.LastCorrect ? T("Dobrze!", "Correct!") : T("To nie ten. Właściwy przedmiot świeci.", "Not that one. The right object is glowing.");
+                    if (palace.LastCorrect)
+                    {
+                        SetTask("TEST", T("Dobrze!", "Correct!"), color: Ui.Green);
+                    }
+                    else
+                    {
+                        SetTask("TEST", T("To nie ten", "Not that one"), T("Właściwy przedmiot świeci.", "The right object is glowing."), color: Ui.Yellow);
+                    }
+
+                    return true;
                 default:
-                    return string.Empty;
+                    return false;
             }
         }
+
+        private void SetTask(string mode, string main, string hint = null, Color? color = null, int size = TaskTextSize, bool answerBar = false)
+        {
+            _taskMode.text = mode;
+            _taskMain.text = main;
+            _taskMain.fontSize = size;
+            _taskMain.color = color ?? Ui.TextColor;
+            _taskHint.text = hint ?? string.Empty;
+            _taskHint.gameObject.SetActive(hint != null);
+            _answerBar.SetActive(answerBar);
+        }
+
+        private static void Separator(Transform parent) => Ui.Label(parent, "·", 22, Ui.Muted);
 
         /// <summary>Palace objects mirror the game state: labels in Learning, highlights in Test feedback.</summary>
         public void SyncObjects()

@@ -6,11 +6,16 @@ namespace NeuroScholAR.App.UI
 {
     public static class Ui
     {
-        // GLASS & PANEL COLOR PALETTE
+        // GLASS PALETTE
+        // XREAL is an additive display: it can only add light, black is fully see-through. So "glass" is a faint
+        // purple tint (low alpha, the room stays visible) plus a thin bright edge that tells the eye where the panel is.
         public static readonly Color Background = new Color(0.0f, 0.0f, 0.0f, 0.0f);
-        public static readonly Color Glass = new Color(0.10f, 0.12f, 0.18f, 0.75f);   // Translucent outer frame
-        public static readonly Color Panel = new Color(0.18f, 0.20f, 0.28f, 0.85f);   // Inner card background
-        public static readonly Color Accent = new Color(0.55f, 0.38f, 0.85f, 0.95f);  // Soft Violet / Purple
+        public static readonly Color Glass = new Color(0.28f, 0.20f, 0.50f, 0.22f);    // outer frame: barely tinted
+        public static readonly Color Panel = new Color(0.40f, 0.30f, 0.66f, 0.40f);    // cards, HUD pills, secondary buttons
+        public static readonly Color Raised = new Color(0.62f, 0.50f, 0.95f, 0.38f);   // buttons sitting on a card
+        public static readonly Color EdgeColor = new Color(0.82f, 0.72f, 1.00f, 0.60f); // thin glass rim
+        public static readonly Color Accent = new Color(0.55f, 0.38f, 0.85f, 0.95f);   // Soft Violet / Purple
+        public static readonly Color AccentSoft = new Color(0.80f, 0.70f, 1.00f, 1.0f); // small caps labels on glass
         public static readonly Color TextColor = new Color(0.96f, 0.97f, 1.00f, 1.0f);
         public static readonly Color Muted = new Color(0.72f, 0.75f, 0.82f, 0.85f);
         public static readonly Color Green = new Color(0.24f, 0.78f, 0.45f, 0.95f);
@@ -19,53 +24,51 @@ namespace NeuroScholAR.App.UI
 
         public const float WorldScale = 0.00045f;
 
+        private const int SpriteSize = 64;
+        private const float SpriteRadius = 16;
+        private const float EdgeStroke = 2.5f;
+
         private static Font _font;
         public static Font Font => _font ??= Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
 
-        // Runtime 9-sliced rounded sprite generator
         private static Sprite _roundedSprite;
-        public static Sprite RoundedSprite
+        private static Sprite _outlineSprite;
+
+        /// <summary>9-sliced filled rounded rectangle (corner radius 16 units; change per image with <see cref="Corners"/>).</summary>
+        public static Sprite RoundedSprite => _roundedSprite ??= MakeRounded(ring: false);
+
+        /// <summary>Same shape as <see cref="RoundedSprite"/>, only a thin rim: the glass edge.</summary>
+        public static Sprite OutlineSprite => _outlineSprite ??= MakeRounded(ring: true);
+
+        /// <summary>Anti-aliased rounded rect from its signed distance field, generated once at runtime.</summary>
+        private static Sprite MakeRounded(bool ring)
         {
-            get
+            var tex = new Texture2D(SpriteSize, SpriteSize, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp };
+            var colors = new Color32[SpriteSize * SpriteSize];
+            var half = SpriteSize / 2f;
+            for (var y = 0; y < SpriteSize; y++)
             {
-                if (_roundedSprite != null) return _roundedSprite;
-
-                int size = 64;
-                int radius = 16;
-                var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
-                var colors = new Color32[size * size];
-
-                for (int y = 0; y < size; y++)
+                for (var x = 0; x < SpriteSize; x++)
                 {
-                    for (int x = 0; x < size; x++)
+                    // Distance from the rounded-rect edge: negative inside, positive outside.
+                    var qx = Mathf.Abs(x + 0.5f - half) - (half - SpriteRadius);
+                    var qy = Mathf.Abs(y + 0.5f - half) - (half - SpriteRadius);
+                    var outside = new Vector2(Mathf.Max(qx, 0), Mathf.Max(qy, 0)).magnitude;
+                    var d = outside + Mathf.Min(Mathf.Max(qx, qy), 0) - SpriteRadius;
+                    var alpha = Mathf.Clamp01(0.5f - d);
+                    if (ring)
                     {
-                        float cx = x < radius ? radius - x : (x >= size - radius ? x - (size - 1 - radius) : 0);
-                        float cy = y < radius ? radius - y : (y >= size - radius ? y - (size - 1 - radius) : 0);
-                        float distSq = cx * cx + cy * cy;
-
-                        if (distSq > radius * radius)
-                        {
-                            colors[y * size + x] = new Color32(0, 0, 0, 0);
-                        }
-                        else if (distSq > (radius - 1.5f) * (radius - 1.5f))
-                        {
-                            float alpha = Mathf.Clamp01(radius - Mathf.Sqrt(distSq));
-                            byte a = (byte)(alpha * 255);
-                            colors[y * size + x] = new Color32(255, 255, 255, a);
-                        }
-                        else
-                        {
-                            colors[y * size + x] = new Color32(255, 255, 255, 255);
-                        }
+                        alpha *= Mathf.Clamp01(d + EdgeStroke + 0.5f);
                     }
-                }
 
-                tex.SetPixels32(colors);
-                tex.Apply();
-                Vector4 border = new Vector4(radius, radius, radius, radius);
-                _roundedSprite = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f, 0, SpriteMeshType.FullRect, border);
-                return _roundedSprite;
+                    colors[y * SpriteSize + x] = new Color32(255, 255, 255, (byte)(alpha * 255));
+                }
             }
+
+            tex.SetPixels32(colors);
+            tex.Apply();
+            var border = new Vector4(SpriteRadius, SpriteRadius, SpriteRadius, SpriteRadius);
+            return Sprite.Create(tex, new Rect(0, 0, SpriteSize, SpriteSize), new Vector2(0.5f, 0.5f), 100f, 0, SpriteMeshType.FullRect, border);
         }
 
         public static Canvas WorldCanvas(string name, Transform parent, Vector2 sizeMm, Camera eventCamera, bool interactive = true)
@@ -121,9 +124,61 @@ namespace NeuroScholAR.App.UI
             return image;
         }
 
-        public static RectTransform Column(string name, Transform parent, float spacing = 14, int padding = 20, Color? background = null)
+        /// <summary>Corner radius in canvas units (default 16). Half the height gives a pill. Call before <see cref="AddEdge"/>.</summary>
+        public static void Corners(Image image, float radius) => image.pixelsPerUnitMultiplier = SpriteRadius / Mathf.Max(1, radius);
+
+        /// <summary>Thin bright rim over a box: what makes a faint tint read as a glass panel on the glasses.</summary>
+        public static Image AddEdge(Image box, Color? color = null)
         {
-            var rect = background.HasValue ? Box(name, parent, background.Value).rectTransform : Rect(name, parent);
+            var edge = Rect("Edge", box.transform).gameObject.AddComponent<Image>();
+            edge.sprite = OutlineSprite;
+            edge.type = Image.Type.Sliced;
+            edge.pixelsPerUnitMultiplier = box.pixelsPerUnitMultiplier;
+            edge.color = color ?? EdgeColor;
+            edge.raycastTarget = false;
+            edge.gameObject.AddComponent<LayoutElement>().ignoreLayout = true;
+            edge.transform.SetAsFirstSibling(); // over the fill, under the content
+            Stretch(edge.rectTransform);
+            return edge;
+        }
+
+        /// <summary>Glass card or pill: tinted rounded box with an edge and a layout group. Display only (no raycasts).</summary>
+        public static RectTransform Card(string name, Transform parent, Color fill, float radius, int padX, int padY, float spacing, bool horizontal)
+        {
+            var box = Box(name, parent, fill);
+            box.raycastTarget = false;
+            Corners(box, radius);
+            AddEdge(box);
+            var layout = horizontal
+                ? (HorizontalOrVerticalLayoutGroup)box.gameObject.AddComponent<HorizontalLayoutGroup>()
+                : box.gameObject.AddComponent<VerticalLayoutGroup>();
+            layout.spacing = spacing;
+            layout.padding = new RectOffset(padX, padX, padY, padY);
+            layout.childControlWidth = layout.childControlHeight = true;
+            layout.childForceExpandWidth = !horizontal;
+            layout.childForceExpandHeight = false;
+            layout.childAlignment = horizontal ? TextAnchor.MiddleCenter : TextAnchor.UpperLeft;
+            return box.rectTransform;
+        }
+
+        public static RectTransform Column(string name, Transform parent, float spacing = 14, int padding = 20, Color? background = null, bool edge = false)
+        {
+            RectTransform rect;
+            if (background.HasValue)
+            {
+                var box = Box(name, parent, background.Value);
+                if (edge)
+                {
+                    AddEdge(box);
+                }
+
+                rect = box.rectTransform;
+            }
+            else
+            {
+                rect = Rect(name, parent);
+            }
+
             var layout = rect.gameObject.AddComponent<VerticalLayoutGroup>();
             layout.spacing = spacing;
             layout.padding = new RectOffset(padding, padding, padding, padding);
@@ -172,6 +227,7 @@ namespace NeuroScholAR.App.UI
             button.colors = colors;
             button.onClick.AddListener(() => onClick?.Invoke());
             image.gameObject.AddComponent<LayoutElement>().preferredHeight = height;
+            AddEdge(image, new Color(1, 1, 1, 0.22f));
             var label = Label(image.transform, text, fontSize, Color.white, TextAnchor.MiddleCenter, FontStyle.Bold);
             Stretch(label.rectTransform);
             return button;
@@ -195,11 +251,16 @@ namespace NeuroScholAR.App.UI
             return input;
         }
 
+        /// <summary>Progress bar; returns the fill. Corners follow the height, so thin bars stay rounded.</summary>
         public static Image Bar(Transform parent, float height, Color color)
         {
             var back = Box("Bar", parent, new Color(1, 1, 1, 0.15f));
+            back.raycastTarget = false;
+            Corners(back, Mathf.Min(SpriteRadius, height / 2));
             back.gameObject.AddComponent<LayoutElement>().preferredHeight = height;
             var fill = Box("Fill", back.transform, color);
+            fill.raycastTarget = false;
+            fill.pixelsPerUnitMultiplier = back.pixelsPerUnitMultiplier;
             fill.rectTransform.anchorMin = Vector2.zero;
             fill.rectTransform.anchorMax = new Vector2(0, 1);
             fill.rectTransform.offsetMin = fill.rectTransform.offsetMax = Vector2.zero;

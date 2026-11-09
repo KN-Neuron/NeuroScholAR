@@ -72,7 +72,7 @@ namespace NeuroScholAR.App.UI
             _root = root.gameObject;
 
             // MAIN OUTER WINDOW
-            var main = Ui.Column("Main", root, spacing: 18, padding: 24, background: Ui.Glass);
+            var main = Ui.Column("Main", root, spacing: 18, padding: 24, background: Ui.Glass, edge: true);
             Ui.Stretch(main);
             _main = main.gameObject;
 
@@ -95,7 +95,7 @@ namespace NeuroScholAR.App.UI
             body.GetComponent<HorizontalLayoutGroup>().childForceExpandHeight = true; // both cards same height
 
             // --- LEFT COLUMN: STUDY MATERIAL CARD ---
-            var leftCard = Ui.Column("LeftCard", body, spacing: 12, padding: 20, background: Ui.Panel);
+            var leftCard = Ui.Column("LeftCard", body, spacing: 12, padding: 20, background: Ui.Panel, edge: true);
             EqualColumn(leftCard);
 
             _step1Text = Ui.Label(leftCard, "WYBÓR MATERIAŁU", 22, Ui.Muted, style: FontStyle.Bold);
@@ -104,13 +104,13 @@ namespace NeuroScholAR.App.UI
             var sets = Ui.Column("Sets", leftCard, spacing: 8);
             foreach (var set in PredefinedSets.All)
             {
-                Ui.Button(sets, set.SetName, () => Select(new ImportResult(set, Array.Empty<string>())), Ui.Glass, height: 46, fontSize: 20);
+                Ui.Button(sets, set.SetName, () => Select(new ImportResult(set, Array.Empty<string>())), Ui.Raised, height: 46, fontSize: 20);
             }
 
             // Custom Import Actions
             var importRow = Ui.Row("Import", leftCard, 8);
-            var importFileBtn = Ui.Button(importRow, "Z pliku (CSV/JSON)", ShowFiles, Ui.Glass, height: 46, fontSize: 19);
-            var importManualBtn = Ui.Button(importRow, "Wpisz ręcznie", () => ShowManual(true), Ui.Glass, height: 46, fontSize: 19);
+            var importFileBtn = Ui.Button(importRow, "Z pliku (CSV/JSON)", ShowFiles, Ui.Raised, height: 46, fontSize: 19);
+            var importManualBtn = Ui.Button(importRow, "Wpisz ręcznie", () => ShowManual(true), Ui.Raised, height: 46, fontSize: 19);
             _importFileText = importFileBtn.GetComponentInChildren<Text>();
             _importManualText = importManualBtn.GetComponentInChildren<Text>();
 
@@ -119,14 +119,14 @@ namespace NeuroScholAR.App.UI
 
 
             // --- RIGHT COLUMN: EEG & SYSTEM STATUS CARD ---
-            var rightCard = Ui.Column("RightCard", body, spacing: 12, padding: 20, background: Ui.Panel);
+            var rightCard = Ui.Column("RightCard", body, spacing: 12, padding: 20, background: Ui.Panel, edge: true);
             EqualColumn(rightCard);
 
             _step2Text = Ui.Label(rightCard, "OPASKA EEG I STATUS", 22, Ui.Muted, style: FontStyle.Bold);
 
             var eegRow = Ui.Row("Eeg", rightCard, 8);
-            _connect = Ui.Button(eegRow, "Połącz opaskę EEG", Connect, Ui.Glass, height: 48, fontSize: 19);
-            _simulator = Ui.Button(eegRow, string.Empty, ToggleSimulator, Ui.Glass, height: 48, fontSize: 19);
+            _connect = Ui.Button(eegRow, "Połącz opaskę EEG", Connect, Ui.Raised, height: 48, fontSize: 19);
+            _simulator = Ui.Button(eegRow, string.Empty, ToggleSimulator, Ui.Raised, height: 48, fontSize: 19);
 
             var status = Ui.Row("Status", rightCard, 10);
             _connectionLight = Ui.Box("Light", status, Ui.Red);
@@ -142,8 +142,8 @@ namespace NeuroScholAR.App.UI
 
             var failed = Ui.Row("CalibrationFailed", rightCard, 8);
             _calibrationFailed = failed.gameObject;
-            var calibRetryBtn = Ui.Button(failed, "Powtórz kalibrację", () => _app.StartCalibration(), Ui.Glass, height: 44, fontSize: 18);
-            var calibContBtn = Ui.Button(failed, "Kontynuuj bez EEG", _app.ContinueWithoutEeg, Ui.Glass, height: 44, fontSize: 18);
+            var calibRetryBtn = Ui.Button(failed, "Powtórz kalibrację", () => _app.StartCalibration(), Ui.Raised, height: 44, fontSize: 18);
+            var calibContBtn = Ui.Button(failed, "Kontynuuj bez EEG", _app.ContinueWithoutEeg, Ui.Raised, height: 44, fontSize: 18);
             _calibrationRetryText = calibRetryBtn.GetComponentInChildren<Text>();
             _calibrationContinueText = calibContBtn.GetComponentInChildren<Text>();
 
@@ -155,7 +155,7 @@ namespace NeuroScholAR.App.UI
 
 
             // ---- MANUAL ENTRY PAGE ----
-            var manual = Ui.Column("Manual", root, spacing: 16, padding: 28, background: Ui.Glass);
+            var manual = Ui.Column("Manual", root, spacing: 16, padding: 28, background: Ui.Glass, edge: true);
             Ui.Stretch(manual);
             _manual = manual.gameObject;
             _manualTitleText = Ui.Label(manual, "Własny zestaw", 36, style: FontStyle.Bold);
@@ -339,7 +339,7 @@ namespace NeuroScholAR.App.UI
 
             foreach (var file in files)
             {
-                Ui.Button(_fileList, Path.GetFileName(file), () => Import(file), Ui.Glass, height: 44, fontSize: 18);
+                Ui.Button(_fileList, Path.GetFileName(file), () => Import(file), Ui.Raised, height: 44, fontSize: 18);
             }
         }
 
