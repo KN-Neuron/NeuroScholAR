@@ -27,6 +27,7 @@ namespace NeuroScholAR.App
         private Interactor _input;
         private Canvas _screens;
         private LazyFollow _screensFollow;
+        private static readonly Vector2 ScreensSize = new Vector2(900, 720); // onboarding / calibration / summary
         private OnboardingScreen _onboarding;
         private SetupScreen _setup;
         private CalibrationScreen _calibration;
@@ -61,7 +62,8 @@ namespace NeuroScholAR.App
             _placer.Completed += () =>
             {
                 _app.FinishPlacement();
-                _session.Toast("Wszystko rozmieszczone! Podchodź do przedmiotów i patrz na nie.", 6);
+                _session.Toast(Lang.T("Wszystko rozmieszczone! Podchodź do przedmiotów i patrz na nie.",
+                    "Everything placed! Walk up to the objects and look at them."), 6);
             };
             _input = gameObject.AddComponent<Interactor>();
             _input.ObjectSelected += i => _app.SelectObject(i);
@@ -78,13 +80,15 @@ namespace NeuroScholAR.App
             _input.Init(_camera, _session.Reticle);
             _dev = new DevOverlay(_camera, _app, _placer, _input);
 
-            _screens = Ui.WorldCanvas("Screens", world, new Vector2(900, 720), _camera);
+            _screens = Ui.WorldCanvas("Screens", world, ScreensSize, _camera);
             _screensFollow = _screens.gameObject.AddComponent<LazyFollow>();
             _screensFollow.Head = _camera.transform;
-            _screensFollow.HeightOffset = -0.1f; // slightly below the eyes: comfortable to read and to poke
+            // Just below the eyes. Not lower: the glasses show only ~+-14 degrees vertically (+-0.16 m at 0.65 m), so a
+            // lower centre pushes the bottom row (where the buttons are) out of view.
+            _screensFollow.HeightOffset = -0.02f;
             _screensFollow.Distance = 0.65f;
             _onboarding = new OnboardingScreen(_screens.transform, () => ShowOnboarding(false));
-            _setup = new SetupScreen(_screens.transform, _app, config.UseSimulator);
+            _setup = new SetupScreen(_screens.transform, _app, config.UseSimulator, () => ShowOnboarding(true));
             _calibration = new CalibrationScreen(_screens.transform, _app, () => _calibration.Press(_clock.NowSeconds));
             _summary = new SummaryScreen(_screens.transform, _app, _exporter, () => _app.NewSession());
 
@@ -116,9 +120,14 @@ namespace NeuroScholAR.App
             {
                 _calibration.Animate(_clock.NowSeconds);
             }
-            else if (_app.Phase == AppPhase.Session)
+
+            if (_app.Phase == AppPhase.Session)
             {
                 _session.Tick();
+            }
+            else
+            {
+                _session.TickToast(); // toasts can show on any screen
             }
 
             if (Time.unscaledTime >= _nextRefresh)
@@ -161,7 +170,9 @@ namespace NeuroScholAR.App
             _shownPhase = phase;
             var onboarding = _onboardingVisible && phase == AppPhase.Setup;
             _onboarding.SetVisible(onboarding);
-            _setup.SetVisible(!onboarding && phase == AppPhase.Setup);
+            var setup = !onboarding && phase == AppPhase.Setup;
+            _setup.SetVisible(setup);
+            Ui.SetCanvasSize(_screens, setup ? SetupScreen.CanvasSize : onboarding ? OnboardingScreen.CanvasSize : ScreensSize);
             _calibration.SetVisible(phase == AppPhase.Calibration);
             _summary.SetVisible(phase == AppPhase.Summary);
             _screens.gameObject.SetActive(phase != AppPhase.Session);
@@ -207,10 +218,11 @@ namespace NeuroScholAR.App
                 switch (notice)
                 {
                     case Notice.ConnectionLost:
-                        _session.Toast("Utracono połączenie z opaską. Nauka trwa bez EEG, łączę ponownie…", 8);
+                        _session.Toast(Lang.T("Utracono połączenie z opaską. Nauka trwa bez EEG, łączę ponownie…",
+                            "Lost connection to the headband. Learning continues without EEG, reconnecting…"), 8);
                         break;
                     case Notice.Reconnected:
-                        _session.Toast("Opaska połączona ponownie.");
+                        _session.Toast(Lang.T("Opaska połączona ponownie.", "Headband reconnected."));
                         break;
                     case Notice.SuggestBreak:
                         _session.PendingPrompt = Modal.BreakPrompt;
@@ -219,19 +231,19 @@ namespace NeuroScholAR.App
                         _session.PendingPrompt = Modal.SessionLimit;
                         break;
                     case Notice.BreakEnded:
-                        _session.Toast("Koniec przerwy, wracamy do nauki.");
+                        _session.Toast(Lang.T("Koniec przerwy, wracamy do nauki.", "Break over, back to learning."));
                         break;
                     case Notice.SpeedUpOn:
-                        _session.Toast("Świetne skupienie! Przyspieszamy test.");
+                        _session.Toast(Lang.T("Świetne skupienie! Przyspieszamy test.", "Great focus! Speeding up the test."));
                         break;
                     case Notice.SpeedUpOff:
-                        _session.Toast("Wracamy do zwykłego tempa.");
+                        _session.Toast(Lang.T("Wracamy do zwykłego tempa.", "Back to the normal pace."));
                         break;
                     case Notice.AllViewed:
-                        _session.Toast("Wszystkie przedmioty obejrzane. Za chwilę test.");
+                        _session.Toast(Lang.T("Wszystkie przedmioty obejrzane. Za chwilę test.", "All objects viewed. The test starts soon."));
                         break;
                     case Notice.TestStarted:
-                        _session.Toast("Test! Znajdź przedmiot, przy którym było pokazane hasło.", 6);
+                        _session.Toast(Lang.T("Test! Znajdź przedmiot, przy którym było pokazane hasło.", "Test! Find the object where the term was shown."), 6);
                         break;
                     case Notice.CalibrationFailed:
                     case Notice.SessionFinished:

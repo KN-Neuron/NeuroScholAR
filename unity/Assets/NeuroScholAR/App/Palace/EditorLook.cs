@@ -12,6 +12,12 @@ namespace NeuroScholAR.App.Palace
         private const float MouseSpeed = 0.15f;
         private const float KeySpeed = 90f;
 
+        /// <summary>
+        /// Vertical field of view in the Editor, close to the XREAL glasses (~25-28 degrees). The scene camera's 60 degrees
+        /// shows twice as much, so UI text got half the pixels and looked blurry. On a device XR sets the real value.
+        /// </summary>
+        [SerializeField] private float glassesFieldOfView = 28f;
+
         private float _yaw;
         private float _pitch;
 
@@ -20,6 +26,12 @@ namespace NeuroScholAR.App.Palace
             if (!Application.isEditor)
             {
                 enabled = false;
+                return;
+            }
+
+            if (TryGetComponent<Camera>(out var cam))
+            {
+                cam.fieldOfView = glassesFieldOfView;
             }
         }
 
