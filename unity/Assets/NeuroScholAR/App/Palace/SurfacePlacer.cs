@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using NeuroScholAR.Core;
 using NeuroScholAR.Core.Learning;
 using Unity.XR.CoreUtils;
 using UnityEngine;
@@ -22,6 +23,12 @@ namespace NeuroScholAR.App.Palace
     /// them. Without a mesh, every detected plane is grid-sampled. Without either (Editor), a ring around the user.
     /// </para>
     /// Placed objects are held by AR anchors, so they stay on their surface when tracking is refined or re-localized.
+    /// <para>
+    /// Never hangs silently: if no object is placed for <see cref="PlacementConfig.PlacementTimeoutSeconds"/> after the
+    /// scan, <see cref="Stalled"/> turns on and the session view asks the user to try again or place around them. The
+    /// mesh raycasts run a few grid columns per frame (<see cref="MeshSweepBudgetMs"/>), so a large room mesh in a
+    /// furnished room doesn't freeze frames.
+    /// </para>
     /// </summary>
     public sealed class SurfacePlacer : MonoBehaviour
     {
@@ -45,6 +52,8 @@ namespace NeuroScholAR.App.Palace
         private const float MeshFlatTolerance = 0.04f;
         private const float MinUpNormal = 0.9f;
         private const float WallCheckDistance = 0.3f, WallCheckTolerance = 0.08f;
+        private const float MeshSweepBudgetMs = 3f; // main-thread raycast time per frame; a full sweep spans several frames
+        private static readonly int MeshSteps = Mathf.FloorToInt(2 * MeshRadius / MeshGridStep);
 
         // Built-in "Ignore Raycast" layer: default raycasts and overlaps (gaze, fingertips) skip the room mesh.
         private const int RoomMeshLayer = 2;
@@ -55,7 +64,9 @@ namespace NeuroScholAR.App.Palace
             MeshColliderCookingOptions.CookForFasterSimulation | MeshColliderCookingOptions.EnableMeshCleaning |
             MeshColliderCookingOptions.WeldColocatedVertices | MeshColliderCookingOptions.UseFastMidphase;
 
-        private readonly SurfacePlanner _planner = new SurfacePlanner();
+        private readonly PlacementConfig _config = new PlacementConfig();
+        private SurfacePlanner _planner;
+        private PlacementWatchdog _watchdog;
         private readonly List<SurfaceSpot> _spots = new List<SurfaceSpot>();
         private readonly HashSet<string> _surfaceIds = new HashSet<string>();
         private readonly Dictionary<string, ARPlane> _planeById = new Dictionary<string, ARPlane>();
@@ -82,10 +93,23 @@ namespace NeuroScholAR.App.Palace
         private int _meshSpots;
         private int _wallsRejectedByMesh;
 
+        // Mesh sweep: _sweepPoints fills column by column; when complete it becomes _meshPoints (what spots use).
+        private List<Vector3> _meshPoints = new List<Vector3>();
+        private List<Vector3> _sweepPoints = new List<Vector3>();
+        private int _sweepColumn = -1; // -1: no sweep in progress
+        private Vector3 _sweepCentre;
+        private float _sweepTop, _sweepLength, _sweepStartedAt, _nextSweep, _lastSweepSeconds;
+
         /// <summary>All requested objects are placed.</summary>
         public event Action Completed;
 
         public bool IsPlacing { get; private set; }
+
+        /// <summary>Placing got stuck (no new object for the timeout); waits for <see cref="Retry"/> or <see cref="PlaceRemainingAround"/>.</summary>
+        public bool Stalled { get; private set; }
+
+        /// <summary>Set while the session is paused: the stuck timer doesn't run.</summary>
+        public bool Hold { get; set; }
 
         /// <summary>Still in the scan step (nothing placed yet).</summary>
         public bool IsScanning => IsPlacing && !_scanDone;
@@ -108,10 +132,12 @@ namespace NeuroScholAR.App.Palace
         private bool HasMesh => MeshRunning && _meshing.meshes.Count > 0;
         private bool AnchorsRunning => _anchors != null && _anchors.subsystem != null && _anchors.subsystem.running;
 
-        public void Init(PalaceRoom room, Transform head)
+        public void Init(PalaceRoom room, Transform head, IClock clock)
         {
             _room = room;
             _head = head;
+            _planner = new SurfacePlanner(_config);
+            _watchdog = new PlacementWatchdog(clock, _config);
             _planes = FindAnyObjectByType<ARPlaneManager>();
             if (_planes != null)
             {
@@ -139,8 +165,19 @@ namespace NeuroScholAR.App.Palace
             _scanDone = false;
             _planeById.Clear();
             _surfaceIds.Clear();
+            _watchdog.Reset();
+            Stalled = false;
             IsPlacing = true;
             SetScanning(true);
+        }
+
+        /// <summary>"Spróbuj ponownie" after a stall: clears what was placed and scans again (meshing keeps running).</summary>
+        public void Retry()
+        {
+            if (IsPlacing)
+            {
+                Begin(_target);
+            }
         }
 
         /// <summary>"Rozmieść teraz": ends the scan early and starts placing on what was found.</summary>
@@ -186,6 +223,7 @@ namespace NeuroScholAR.App.Palace
         public void Stop()
         {
             IsPlacing = false;
+            Stalled = false;
             SetScanning(false);
             ReleaseAnchors();
             _markers.Hide();
@@ -194,6 +232,18 @@ namespace NeuroScholAR.App.Palace
         private void Update()
         {
             UpdateColliders();
+            if (IsPlacing || DevMode.Enabled)
+            {
+                SweepMesh();
+            }
+
+            if (IsPlacing && !Stalled && _watchdog.Check(_scanDone && !Hold, PlacedCount))
+            {
+                Stalled = true;
+                Debug.LogWarning($"NeuroScholAR: placement stuck at {PlacedCount}/{_target} with {_spots.Count} spots on " +
+                                 $"{SurfaceCount} surfaces; asking the user");
+            }
+
             if (Time.time < _nextStep)
             {
                 return;
@@ -212,9 +262,9 @@ namespace NeuroScholAR.App.Palace
             }
 
             UpdateDevView();
-            if (!IsPlacing)
+            if (!IsPlacing || Stalled)
             {
-                return;
+                return; // stalled: the user decides (Retry or PlaceRemainingAround)
             }
 
             if (!HasPlaneDetection && Time.time - _startedAt > NoSurfacesFallbackSeconds)
@@ -249,6 +299,7 @@ namespace NeuroScholAR.App.Palace
         private void Finish()
         {
             IsPlacing = false;
+            Stalled = false;
             Completed?.Invoke();
         }
 
@@ -355,39 +406,92 @@ namespace NeuroScholAR.App.Palace
         }
 
         /// <summary>
-        /// Downward rays on a grid around the user onto the room mesh; keeps flat, upward-facing patches with room for
-        /// an object. Lowers <paramref name="floorY"/> to the lowest such patch (the real floor, once it was scanned).
+        /// Spots from the last complete mesh sweep (<see cref="SweepMesh"/>). Lowers <paramref name="floorY"/> to the
+        /// lowest flat patch (the real floor, once it was scanned).
         /// </summary>
         private void CollectMeshSpots(ref float floorY)
         {
-            var centre = _head.position;
-            var top = centre.y + 0.4f;
-            var length = top - (floorY - 1f);
-            var start = _spots.Count;
-            for (var x = -MeshRadius; x <= MeshRadius; x += MeshGridStep)
+            foreach (var point in _meshPoints)
             {
-                for (var z = -MeshRadius; z <= MeshRadius; z += MeshGridStep)
-                {
-                    if (x * x + z * z <= MeshRadius * MeshRadius &&
-                        TryFlatTop(new Vector3(centre.x + x, top, centre.z + z), length, out var point))
-                    {
-                        floorY = Mathf.Min(floorY, point.y);
-                        _spots.Add(new SurfaceSpot(ToNum(point), SurfaceKind.Furniture, string.Empty));
-                    }
-                }
+                floorY = Mathf.Min(floorY, point.y);
             }
 
             // Kinds and surface ids once the floor height is known.
             // ponytail: "same surface" = same 10 cm height band within a 1.5 m cell; real segmentation if caps misfire.
-            for (var i = start; i < _spots.Count; i++)
+            foreach (var p in _meshPoints)
             {
-                var p = _spots[i].Position;
-                var kind = p.Y - floorY < FloorTolerance ? SurfaceKind.Floor : SurfaceKind.Furniture;
-                var id = $"mesh {Mathf.RoundToInt(p.Y / 0.1f)} {Mathf.FloorToInt(p.X / 1.5f)} {Mathf.FloorToInt(p.Z / 1.5f)}";
-                _spots[i] = new SurfaceSpot(p, kind, id);
+                var kind = p.y - floorY < FloorTolerance ? SurfaceKind.Floor : SurfaceKind.Furniture;
+                var id = $"mesh {Mathf.RoundToInt(p.y / 0.1f)} {Mathf.FloorToInt(p.x / 1.5f)} {Mathf.FloorToInt(p.z / 1.5f)}";
+                _spots.Add(new SurfaceSpot(ToNum(p), kind, id));
             }
 
-            _meshSpots = _spots.Count - start;
+            _meshSpots = _meshPoints.Count;
+        }
+
+        /// <summary>
+        /// Downward rays on a grid around the user onto the room mesh, keeping flat, upward-facing patches with room for
+        /// an object. A few grid columns per frame within <see cref="MeshSweepBudgetMs"/>: in a furnished room the mesh
+        /// has many chunks and a full sweep (~2800 raycasts) at once caused frame stalls. A new sweep starts at most
+        /// every <see cref="PlaceInterval"/>.
+        /// </summary>
+        private void SweepMesh()
+        {
+            if (!HasMesh)
+            {
+                _meshPoints.Clear();
+                _sweepColumn = -1;
+                return;
+            }
+
+            if (_sweepColumn < 0)
+            {
+                if (Time.time < _nextSweep)
+                {
+                    return;
+                }
+
+                var floorY = FloorY();
+                foreach (var point in _meshPoints)
+                {
+                    floorY = Mathf.Min(floorY, point.y);
+                }
+
+                _sweepCentre = _head.position;
+                _sweepTop = _sweepCentre.y + 0.4f;
+                _sweepLength = _sweepTop - (floorY - 1f);
+                _sweepPoints.Clear();
+                _sweepStartedAt = Time.realtimeSinceStartup;
+                _sweepColumn = 0;
+            }
+
+            var started = Time.realtimeSinceStartup;
+            while (_sweepColumn <= MeshSteps)
+            {
+                var x = -MeshRadius + _sweepColumn * MeshGridStep;
+                for (var j = 0; j <= MeshSteps; j++)
+                {
+                    var z = -MeshRadius + j * MeshGridStep;
+                    if (x * x + z * z <= MeshRadius * MeshRadius &&
+                        TryFlatTop(new Vector3(_sweepCentre.x + x, _sweepTop, _sweepCentre.z + z), _sweepLength, out var point))
+                    {
+                        _sweepPoints.Add(point);
+                    }
+                }
+
+                _sweepColumn++;
+                if ((Time.realtimeSinceStartup - started) * 1000 >= MeshSweepBudgetMs)
+                {
+                    break;
+                }
+            }
+
+            if (_sweepColumn > MeshSteps)
+            {
+                (_meshPoints, _sweepPoints) = (_sweepPoints, _meshPoints);
+                _sweepColumn = -1;
+                _lastSweepSeconds = Time.realtimeSinceStartup - _sweepStartedAt;
+                _nextSweep = Time.time + PlaceInterval;
+            }
         }
 
         /// <summary>Topmost mesh surface under <paramref name="origin"/>, if it is flat and level around the hit.</summary>
@@ -753,7 +857,9 @@ namespace NeuroScholAR.App.Palace
                 $"Siatka: {(MeshRunning ? $"{_meshing.meshes.Count} fragm., {_meshSpots} miejsc" : "niedostępna")}; " +
                 $"ściany odrzucone przez siatkę {_wallsRejectedByMesh}\n" +
                 $"Miejsca {_spots.Count} na {SurfaceCount} powierzchniach; rozmieszczone {PlacedCount}/{_target}; " +
-                $"kotwice {(AnchorsRunning ? _anchorObjects.Count.ToString() : "niedostępne")}";
+                $"kotwice {(AnchorsRunning ? _anchorObjects.Count.ToString() : "niedostępne")}\n" +
+                $"Przebieg siatki {_lastSweepSeconds:F2} s; bez postępu {_watchdog.SecondsWithoutProgress:F0}/{_watchdog.TimeoutSeconds:F0} s" +
+                (Stalled ? " · UTKNĘŁO" : string.Empty);
         }
 
         private static Color KindColor(SurfaceKind? kind) =>

@@ -113,4 +113,66 @@ namespace NeuroScholAR.Core.Tests
             Assert.That(xs[1] - xs[0], Is.GreaterThanOrEqualTo(2f));
         }
     }
+
+    public class PlacementWatchdogTests
+    {
+        private readonly ManualClock _clock = new ManualClock();
+        private PlacementWatchdog Watchdog() => new PlacementWatchdog(_clock, new PlacementConfig { PlacementTimeoutSeconds = 15 });
+
+        [Test]
+        public void NeverTimesOut_WhileScanning()
+        {
+            var watchdog = Watchdog();
+            for (var i = 0; i < 100; i++)
+            {
+                Assert.That(watchdog.Check(waiting: false, placed: 0), Is.False);
+                _clock.Advance(1);
+            }
+        }
+
+        [Test]
+        public void TimesOut_WhenNoObjectIsPlacedAfterTheScan()
+        {
+            var watchdog = Watchdog();
+            Assert.That(watchdog.Check(true, 0), Is.False);
+            _clock.Advance(14.9);
+            Assert.That(watchdog.Check(true, 0), Is.False);
+            _clock.Advance(0.1);
+            Assert.That(watchdog.Check(true, 0), Is.True);
+        }
+
+        [Test]
+        public void EachPlacedObject_RestartsTheTimer()
+        {
+            var watchdog = Watchdog();
+            watchdog.Check(true, 0);
+            for (var placed = 1; placed <= 5; placed++)
+            {
+                _clock.Advance(10);
+                Assert.That(watchdog.Check(true, placed), Is.False, "progress keeps it alive");
+            }
+
+            _clock.Advance(15);
+            Assert.That(watchdog.Check(true, 5), Is.True, "stuck at 5");
+            Assert.That(watchdog.SecondsWithoutProgress, Is.EqualTo(15).Within(1e-9));
+        }
+
+        [Test]
+        public void PauseAndReset_RestartTheTimer()
+        {
+            var watchdog = Watchdog();
+            watchdog.Check(true, 2);
+            _clock.Advance(14);
+            Assert.That(watchdog.Check(false, 2), Is.False, "paused");
+            Assert.That(watchdog.SecondsWithoutProgress, Is.EqualTo(0));
+            Assert.That(watchdog.Check(true, 2), Is.False);
+            _clock.Advance(14);
+            Assert.That(watchdog.Check(true, 2), Is.False, "timer restarted after the pause");
+
+            watchdog.Reset();
+            Assert.That(watchdog.Check(true, 0), Is.False, "retry starts over");
+            _clock.Advance(15);
+            Assert.That(watchdog.Check(true, 0), Is.True);
+        }
+    }
 }

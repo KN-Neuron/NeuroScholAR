@@ -267,6 +267,9 @@ namespace NeuroScholAR.App.UI
             return fill;
         }
 
+        /// <summary>White glass loading spinner, <paramref name="size"/> units square; turns by itself while active.</summary>
+        public static RectTransform Spinner(Transform parent, float size) => GlassSpinner.Create(parent, size);
+
         public static void SetFill(Image fill, float value) =>
             fill.rectTransform.anchorMax = new Vector2(Mathf.Clamp01(value), 1);
 

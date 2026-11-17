@@ -18,6 +18,9 @@ namespace NeuroScholAR.App.UI
         SessionLimit,
         Break,
         Pause,
+
+        /// <summary>Object placement got stuck: try again or place around the user.</summary>
+        PlacementFailed,
     }
 
     /// <summary>
@@ -33,6 +36,9 @@ namespace NeuroScholAR.App.UI
         private const float ToastMaxWidth = 620;
         private const int TaskTextSize = 26;
         private const int TaskTermSize = 34; // the term to find is what the user searches for: largest text on the HUD
+        private const int TaskPadX = 22;
+        private const float SpinnerSize = 56;
+        private const int SpinnerGap = 18;
 
         private readonly SessionController _app;
         private readonly Transform _head;
@@ -63,6 +69,10 @@ namespace NeuroScholAR.App.UI
         private readonly Text _taskHint;
         private readonly GameObject _answerBar;
         private readonly Image _answerFill;
+        private readonly GameObject _spinner;
+        private readonly VerticalLayoutGroup _taskLayout;
+        private readonly RectOffset _taskPadding;
+        private readonly RectOffset _taskPaddingSpinner; // text moved right to make room for the spinner
 
         private readonly PalmMenu _toolbar;
         private readonly Button _placeHereButton;
@@ -132,7 +142,8 @@ namespace NeuroScholAR.App.UI
             _toastWidth = _toast.gameObject.AddComponent<LayoutElement>();
 
             // Task card, below the reticle: small mode label, main line, muted hint, answer-time bar in the test.
-            var task = Ui.Card("Task", hud.transform, Ui.Panel, 20, 22, 14, 4, horizontal: false);
+            // While the room is being set up, a white glass spinner sits on its left.
+            var task = Ui.Card("Task", hud.transform, Ui.Panel, 20, TaskPadX, 14, 4, horizontal: false);
             _taskCard = task.gameObject;
             task.anchorMin = task.anchorMax = new Vector2(0.5f, 0.5f);
             task.pivot = new Vector2(0.5f, 1);
@@ -144,6 +155,14 @@ namespace NeuroScholAR.App.UI
             _taskHint = Ui.Label(task, string.Empty, 19, Ui.Muted);
             _answerFill = Ui.Bar(task, 6, Ui.Accent);
             _answerBar = _answerFill.transform.parent.gameObject;
+            var spinner = Ui.Spinner(task, SpinnerSize);
+            spinner.gameObject.AddComponent<LayoutElement>().ignoreLayout = true;
+            spinner.anchorMin = spinner.anchorMax = spinner.pivot = new Vector2(0, 0.5f);
+            spinner.anchoredPosition = new Vector2(TaskPadX, 0);
+            _spinner = spinner.gameObject;
+            _taskLayout = task.GetComponent<VerticalLayoutGroup>();
+            _taskPadding = _taskLayout.padding;
+            _taskPaddingSpinner = new RectOffset(TaskPadX + (int)SpinnerSize + SpinnerGap, TaskPadX, _taskPadding.top, _taskPadding.bottom);
 
             var reticle = Ui.Box("Reticle", hud.transform, new Color(1, 1, 1, 0.9f));
             reticle.rectTransform.sizeDelta = new Vector2(10, 10);
@@ -294,17 +313,22 @@ namespace NeuroScholAR.App.UI
         {
             switch (palace.Mode)
             {
+                case PalaceMode.Preparation when _placer.Stalled:
+                    return false; // the "couldn't place" dialog says what to do
                 case PalaceMode.Preparation when _placer.IsScanning && _placer.HasPlaneDetection:
                     SetTask(T("SKANOWANIE POKOJU", "ROOM SCAN"),
                         T("Obejdź pokój i rozglądaj się", "Walk around the room and look around"),
                         T($"Meble, podłoga, ściany · znalezione powierzchnie: {_placer.SurfaceCount} · rozmieszczę za {_placer.ScanSecondsLeft:F0} s\nMenu: spójrz na lewą dłoń.",
-                            $"Furniture, floor, walls · surfaces found: {_placer.SurfaceCount} · placing in {_placer.ScanSecondsLeft:F0} s\nMenu: look at your left palm."));
+                            $"Furniture, floor, walls · surfaces found: {_placer.SurfaceCount} · placing in {_placer.ScanSecondsLeft:F0} s\nMenu: look at your left palm."),
+                        spinner: true);
                     return true;
                 case PalaceMode.Preparation:
                     SetTask(T("ROZMIESZCZANIE", "PLACING"),
                         _placer.HasPlaneDetection
                             ? T("Rozmieszczam przedmioty po całym pokoju…", "Placing objects around the room…")
-                            : T("Rozmieszczam przedmioty wokół Ciebie…", "Placing objects around you…"));
+                            : T("Rozmieszczam przedmioty wokół Ciebie…", "Placing objects around you…"),
+                        $"{_placer.PlacedCount} / {_placer.TargetCount}",
+                        spinner: true);
                     return true;
                 case PalaceMode.Learning:
                     var startsIn = _app.TestStartsIn;
@@ -341,8 +365,15 @@ namespace NeuroScholAR.App.UI
             }
         }
 
-        private void SetTask(string mode, string main, string hint = null, Color? color = null, int size = TaskTextSize, bool answerBar = false)
+        private void SetTask(string mode, string main, string hint = null, Color? color = null, int size = TaskTextSize,
+            bool answerBar = false, bool spinner = false)
         {
+            if (_spinner.activeSelf != spinner)
+            {
+                _spinner.SetActive(spinner);
+                _taskLayout.padding = spinner ? _taskPaddingSpinner : _taskPadding;
+            }
+
             _taskMode.text = mode;
             _taskMain.text = main;
             _taskMain.fontSize = size;
@@ -416,6 +447,7 @@ namespace NeuroScholAR.App.UI
         private void UpdateModal()
         {
             var modal = PendingPrompt != Modal.None ? PendingPrompt
+                : _placer.Stalled ? Modal.PlacementFailed
                 : _app.Rules != null && _app.Rules.OnBreak ? Modal.Break
                 : _app.IsPaused ? Modal.Pause
                 : Modal.None;
@@ -454,6 +486,16 @@ namespace NeuroScholAR.App.UI
                 case Modal.Pause:
                     Dialog(T("Pauza", "Paused"), T("Czas sesji jest wstrzymany.", "The session timer is paused."),
                         T("Wznów", "Resume"), _app.Resume, T("Zakończ", "End"), _app.EndSession);
+                    break;
+                case Modal.PlacementFailed:
+                    // No PendingPrompt to clear: the dialog follows _placer.Stalled, which either button ends.
+                    var placed = _placer.PlacedCount;
+                    var total = _placer.TargetCount;
+                    Dialog(T("Nie udało się rozmieścić przedmiotów", "Couldn't place the objects"),
+                        T($"Rozmieszczono {placed}/{total}: za mało wolnych miejsc. Obejdź meble i spróbuj ponownie albo rozmieść resztę wokół siebie.",
+                            $"Placed {placed}/{total}: not enough free spots. Walk past the furniture and try again, or place the rest around you."),
+                        T("Spróbuj ponownie", "Try again"), _placer.Retry,
+                        T("Rozmieść wokół mnie", "Place around me"), _placer.PlaceRemainingAround);
                     break;
             }
         }
