@@ -7,6 +7,7 @@ using NeuroScholAR.Core.Eeg;
 using NeuroScholAR.Core.Learning;
 using NeuroScholAR.Core.Session;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using static NeuroScholAR.App.UI.Lang;
 
@@ -47,11 +48,18 @@ namespace NeuroScholAR.App.UI
         private readonly Button _manualCancelBtn;
 
         private readonly GameObject _calibrationFailed;
-        private readonly InputField _manualName;
-        private readonly InputField _manualPrompt;
-        private readonly InputField _manualAnswer;
+        private readonly KeptInput _manualName;
+        private readonly KeptInput _manualPrompt;
+        private readonly KeptInput _manualAnswer;
 
         private readonly List<(string prompt, string answer)> _manualPairs = new List<(string, string)>();
+        private const int ManualListLines = 4; // last pairs shown under the buttons; more would run off the panel
+
+        // The custom set made with "Wpisz ręcznie": one button under the predefined sets, for this run only
+        // (no cross-session storage, see SPECIFICATION.md).
+        private readonly RectTransform _sets;
+        private Button _customSetButton;
+        private ImportResult _customSet;
 
         private EegConnectionException _seenError;
         private float _errorAt = float.NegativeInfinity;
@@ -106,10 +114,10 @@ namespace NeuroScholAR.App.UI
             _step1Text = Ui.Label(leftCard, "WYBÓR MATERIAŁU", 22, Ui.Muted, style: FontStyle.Bold);
 
             // Stacked Vertical List for Predefined Sets (Prevents text squishing)
-            var sets = Ui.Column("Sets", leftCard, spacing: 8);
+            _sets = Ui.Column("Sets", leftCard, spacing: 8);
             foreach (var set in PredefinedSets.All)
             {
-                Ui.Button(sets, set.SetName, () => Select(new ImportResult(set, Array.Empty<string>())), Ui.Raised, height: 46, fontSize: 20);
+                Ui.Button(_sets, set.SetName, () => Select(new ImportResult(set, Array.Empty<string>())), Ui.Raised, height: 46, fontSize: 20);
             }
 
             // Custom Import Actions
@@ -164,9 +172,9 @@ namespace NeuroScholAR.App.UI
             Ui.Stretch(manual);
             _manual = manual.gameObject;
             _manualTitleText = Ui.Label(manual, "Własny zestaw", 36, style: FontStyle.Bold);
-            _manualName = Ui.Input(manual, "Nazwa zestawu");
-            _manualPrompt = Ui.Input(manual, "Pojęcie / wydarzenie");
-            _manualAnswer = Ui.Input(manual, "Definicja / data");
+            _manualName = new KeptInput(Ui.Input(manual, "Nazwa zestawu"));
+            _manualPrompt = new KeptInput(Ui.Input(manual, "Pojęcie / wydarzenie"));
+            _manualAnswer = new KeptInput(Ui.Input(manual, "Definicja / data"));
 
             var manualRow = Ui.Row("ManualButtons", manual, 10);
             _manualAddBtn = Ui.Button(manualRow, "Dodaj parę", AddManualPair, Ui.Panel, height: 50, fontSize: 20);
@@ -203,9 +211,10 @@ namespace NeuroScholAR.App.UI
             Ui.SetButtonText(_devToggle, DevLabel());
             Ui.SetButtonText(_tutorial, T("Samouczek", "Tutorial"));
 
-            if (_manualName.placeholder is Text namePh) namePh.text = T("Nazwa zestawu", "Set Name");
-            if (_manualPrompt.placeholder is Text promptPh) promptPh.text = T("Pojęcie / wydarzenie", "Term / Event");
-            if (_manualAnswer.placeholder is Text answerPh) answerPh.text = T("Definicja / data", "Definition / Date");
+            if (_manualName.Field.placeholder is Text namePh) namePh.text = T("Nazwa zestawu", "Set Name");
+            if (_manualPrompt.Field.placeholder is Text promptPh) promptPh.text = T("Pojęcie / wydarzenie", "Term / Event");
+            if (_manualAnswer.Field.placeholder is Text answerPh) answerPh.text = T("Definicja / data", "Definition / Date");
+            if (_customSet != null) Ui.SetButtonText(_customSetButton, CustomSetLabel());
 
             if (_app.Material == null)
                 _materialInfo.text = T("Nie wybrano materiału.", "No material selected.");
@@ -373,34 +382,143 @@ namespace NeuroScholAR.App.UI
         {
             _manual.SetActive(show);
             _main.SetActive(!show);
+            if (show)
+            {
+                ShowManualPairs();
+            }
         }
 
         private void AddManualPair()
         {
-            if (string.IsNullOrWhiteSpace(_manualPrompt.text) || string.IsNullOrWhiteSpace(_manualAnswer.text))
+            EndTyping();
+            var prompt = _manualPrompt.Text;
+            var answer = _manualAnswer.Text;
+            if (prompt.Length == 0 || answer.Length == 0)
             {
-                _manualList.text = T("Uzupełnij oba pola.", "Fill in both fields.");
+                ShowManualPairs(T("Uzupełnij oba pola: pojęcie i definicję.", "Fill in both fields: term and definition."));
                 return;
             }
 
-            _manualPairs.Add((_manualPrompt.text, _manualAnswer.text));
-            _manualPrompt.text = _manualAnswer.text = string.Empty;
-            _manualList.text = string.Join("\n", _manualPairs.Select(p => $"• {p.prompt}: {p.answer}"));
+            _manualPairs.Add((prompt, answer));
+            _manualPrompt.Clear();
+            _manualAnswer.Clear();
+            ShowManualPairs(T($"Dodano: {prompt}", $"Added: {prompt}"));
         }
 
         private void FinishManual()
         {
+            EndTyping();
+            if (_manualPrompt.Text.Length > 0 && _manualAnswer.Text.Length > 0)
+            {
+                AddManualPair(); // typed but not added yet: "Gotowe" keeps it rather than dropping it
+            }
+
+            if (_manualPairs.Count == 0)
+            {
+                ShowManualPairs(T("Dodaj co najmniej jedną parę („Dodaj parę”).", "Add at least one pair (\"Add Pair\")."));
+                return;
+            }
+
             try
             {
                 var type = _manualPairs.All(p => p.answer.Trim().All(c => char.IsDigit(c) || c == '.' || c == '-'))
                     ? StudySetType.TermDate
                     : StudySetType.TermDefinition;
-                Select(MaterialParser.FromManual(_manualName.text, type, _manualPairs));
+                var material = MaterialParser.FromManual(_manualName.Text, type, _manualPairs);
+                ShowCustomSet(material);
+                Select(material);
+
+                // Start the next custom set from scratch.
+                _manualPairs.Clear();
+                _manualName.Clear();
+                _manualPrompt.Clear();
+                _manualAnswer.Clear();
                 ShowManual(false);
             }
             catch (MaterialImportException e)
             {
-                _manualList.text = e.Message;
+                ShowManualPairs(e.Message);
+            }
+        }
+
+        /// <summary>
+        /// Ends typing: deselecting the field closes the keyboard and keeps its text, so it is read as shown and the
+        /// keyboard can't type a cleared field full again on the next frame.
+        /// </summary>
+        private static void EndTyping()
+        {
+            if (EventSystem.current != null)
+            {
+                EventSystem.current.SetSelectedGameObject(null);
+            }
+        }
+
+        /// <summary>Under the manual-entry buttons: an optional note, the pair count and the last few pairs.</summary>
+        private void ShowManualPairs(string note = null)
+        {
+            var lines = new List<string>();
+            if (!string.IsNullOrEmpty(note))
+            {
+                lines.Add(note);
+            }
+
+            lines.Add(T($"Pary w zestawie: {_manualPairs.Count}", $"Pairs in the set: {_manualPairs.Count}"));
+            lines.AddRange(_manualPairs.Skip(Math.Max(0, _manualPairs.Count - ManualListLines)).Select(p => $"• {p.prompt}: {p.answer}"));
+            _manualList.text = string.Join("\n", lines);
+        }
+
+        /// <summary>Puts the custom set on the selection list (one button, replaced by the next custom set).</summary>
+        private void ShowCustomSet(ImportResult material)
+        {
+            _customSet = material;
+            if (_customSetButton == null)
+            {
+                _customSetButton = Ui.Button(_sets, string.Empty, () => Select(_customSet), Ui.Raised, height: 46, fontSize: 20);
+            }
+
+            Ui.SetButtonText(_customSetButton, CustomSetLabel());
+        }
+
+        private string CustomSetLabel() => _customSet.Set.SetName + T(" (własny)", " (custom)");
+
+        /// <summary>
+        /// Input field that keeps what was typed when the on-screen keyboard is closed without its "Done" key. Unity's
+        /// InputField counts that as a cancel and puts the old text back (empty for a new pair), so on the glasses every
+        /// entry vanished before "Dodaj parę" read it (issue #31).
+        /// </summary>
+        private sealed class KeptInput
+        {
+            private string _typed = string.Empty;
+
+            public KeptInput(InputField field)
+            {
+                Field = field;
+                field.onValueChanged.AddListener(value =>
+                {
+                    // Only real typing: not the cancel's restore (field no longer focused) nor the closing keyboard's last sync.
+                    var keyboard = field.touchScreenKeyboard;
+                    if (field.isFocused && (keyboard == null || keyboard.status == TouchScreenKeyboard.Status.Visible))
+                    {
+                        _typed = value;
+                    }
+                });
+                field.onEndEdit.AddListener(_ =>
+                {
+                    if (field.wasCanceled && field.text != _typed)
+                    {
+                        field.text = _typed;
+                    }
+                });
+            }
+
+            public InputField Field { get; }
+
+            public string Text => Field.text.Trim();
+
+            public void Clear()
+            {
+                _typed = string.Empty;
+                Field.text = string.Empty;
             }
         }
 
