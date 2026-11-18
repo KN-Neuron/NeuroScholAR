@@ -160,6 +160,7 @@ namespace NeuroScholAR.App.UI
             spinner.anchorMin = spinner.anchorMax = spinner.pivot = new Vector2(0, 0.5f);
             spinner.anchoredPosition = new Vector2(TaskPadX, 0);
             _spinner = spinner.gameObject;
+            _spinner.SetActive(false); // SetTask turns it on together with the wider left padding
             _taskLayout = task.GetComponent<VerticalLayoutGroup>();
             _taskPadding = _taskLayout.padding;
             _taskPaddingSpinner = new RectOffset(TaskPadX + (int)SpinnerSize + SpinnerGap, TaskPadX, _taskPadding.top, _taskPadding.bottom);
@@ -368,10 +369,16 @@ namespace NeuroScholAR.App.UI
         private void SetTask(string mode, string main, string hint = null, Color? color = null, int size = TaskTextSize,
             bool answerBar = false, bool spinner = false)
         {
+            // Spinner and padding are set independently, so the text always clears the spinner whatever the starting state.
             if (_spinner.activeSelf != spinner)
             {
                 _spinner.SetActive(spinner);
-                _taskLayout.padding = spinner ? _taskPaddingSpinner : _taskPadding;
+            }
+
+            var padding = spinner ? _taskPaddingSpinner : _taskPadding;
+            if (_taskLayout.padding != padding)
+            {
+                _taskLayout.padding = padding; // only on change: assigning re-runs the card's layout
             }
 
             _taskMode.text = mode;
