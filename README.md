@@ -178,11 +178,11 @@ The app only uses AR Foundation's `XROrigin`/camera, so XREAL is an XR provider,
 | Look-to-learn dwell, poke press depth / travel | `App/Palace/Interactor.cs` constants |
 | Scan time before placing | `App/Palace/SurfacePlacer.cs` → `ScanSeconds` |
 | Palm menu open angle and offsets | `App/UI/PalmMenu.cs` constants |
-| Find time, feedback time, auto test delay | `AdaptiveConfig` (`AnswerTimeS`, `TransitionS`, `AutoTestDelayS`) |
+| Find time, feedback time (right answer; wrong answer `WrongTransitionS` = 7 s), auto test delay | `AdaptiveConfig` (`AnswerTimeS`, `TransitionS`, `WrongTransitionS`, `AutoTestDelayS`) |
 
 ## Tests
 
-- `dotnet test` runs 103 tests:
+- `dotnet test` runs 104 tests:
   - band power on synthetic sinusoids per band, with amplitude checked against A²/2
   - focus normalization edge cases: zero, negative, NaN and ∞ baselines and ratios, clamping, EMA
     hold/stale, calibration failure modes

@@ -8,7 +8,7 @@ namespace NeuroScholAR.App.Palace
     {
         None,
 
-        /// <summary>Test feedback: this is where the asked pair lives (pulses).</summary>
+        /// <summary>Test feedback: this is where the asked pair lives (pulses gold to white, with a beam and a larger label).</summary>
         Target,
 
         /// <summary>Test feedback: the user picked this one and it was right.</summary>
@@ -25,11 +25,25 @@ namespace NeuroScholAR.App.Palace
     public sealed class PalaceObjectView : MonoBehaviour
     {
         private const int WrapColumns = 28;
+        private const float LabelSize = 0.006f;
+        private const float TargetLabelSize = 0.009f; // the right answer's label: readable from further away
+
+        // "Here it is" beam over the right object after a wrong answer: a thin gold column above the label, visible
+        // across the room even when the object itself is small or half hidden behind furniture.
+        private const float BeamGap = 0.25f;    // above the label anchor, clear of a two- or three-line label
+        private const float BeamHeight = 1.2f;
+        private const float BeamWidth = 0.04f;
+        private const float PulseSpeed = 6f;    // radians per second: about one pulse per second
+
         private static readonly int EmissionColor = Shader.PropertyToID("_EmissionColor");
+        private static readonly Color TargetGold = new Color(1f, 0.85f, 0.25f);
+        private static readonly Color TargetWhite = new Color(1f, 1f, 0.85f);
         private static Font _font;
 
         private Renderer[] _renderers;
         private MaterialPropertyBlock _block;
+        private GameObject _beam;
+        private Material _beamMaterial;
         private TextMesh _label;
         private Transform _labelTransform;
         private string _labelSource;
@@ -58,8 +72,19 @@ namespace NeuroScholAR.App.Palace
             labelGo.GetComponent<MeshRenderer>().sharedMaterial = _font.material;
             _label.anchor = TextAnchor.LowerCenter;
             _label.alignment = TextAlignment.Center;
-            _label.characterSize = 0.006f;
+            _label.characterSize = LabelSize;
             _label.fontSize = 64;
+
+            _beam = GameObject.CreatePrimitive(PrimitiveType.Cylinder); // 2 m tall at scale 1
+            _beam.name = "Beam";
+            Destroy(_beam.GetComponent<Collider>()); // must never catch gaze rays or fingertips
+            _beam.transform.SetParent(transform, false);
+            _beam.transform.localPosition = new Vector3(0, labelHeight + BeamGap + BeamHeight / 2, 0);
+            _beam.transform.localScale = new Vector3(BeamWidth, BeamHeight / 2, BeamWidth);
+            _beamMaterial = DevMaterials.Transparent(TargetGold);
+            _beam.GetComponent<Renderer>().sharedMaterial = _beamMaterial;
+            _beam.SetActive(false);
+
             SetLabel("?");
             Apply(0);
         }
@@ -99,6 +124,10 @@ namespace NeuroScholAR.App.Palace
             if (_highlight != highlight)
             {
                 _highlight = highlight;
+                var target = highlight == Highlight.Target;
+                _beam.SetActive(target);
+                _label.characterSize = target ? TargetLabelSize : LabelSize;
+                _label.color = target ? TargetGold : Color.white;
                 Apply(0);
             }
         }
@@ -107,7 +136,17 @@ namespace NeuroScholAR.App.Palace
         {
             if (_highlight == Highlight.Target)
             {
-                Apply(0.5f + 0.5f * Mathf.Sin(Time.time * 6f));
+                var pulse = 0.5f + 0.5f * Mathf.Sin(Time.time * PulseSpeed);
+                Apply(pulse);
+                _beamMaterial.color = new Color(TargetGold.r, TargetGold.g, TargetGold.b, 0.35f + 0.45f * pulse);
+            }
+        }
+
+        private void OnDestroy()
+        {
+            if (_beamMaterial != null)
+            {
+                Destroy(_beamMaterial); // one per object; objects are rebuilt every session
             }
         }
 
@@ -130,7 +169,8 @@ namespace NeuroScholAR.App.Palace
         {
             var emission = _highlight switch
             {
-                Highlight.Target => new Color(1f, 0.85f, 0.2f) * (0.4f + 1.2f * pulse),
+                // From strong gold to nearly white: the brightest thing in the room on the additive glasses.
+                Highlight.Target => Color.Lerp(TargetGold * 0.8f, TargetWhite, pulse) * (1f + pulse),
                 Highlight.Correct => new Color(0.2f, 0.9f, 0.3f),
                 Highlight.Wrong => new Color(0.95f, 0.2f, 0.15f),
                 _ => _hovered ? new Color(0.35f, 0.6f, 1f) * 0.6f : _viewed ? new Color(0.1f, 0.35f, 0.1f) : Color.black,

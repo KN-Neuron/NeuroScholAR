@@ -113,5 +113,15 @@ namespace NeuroScholAR.Core.Tests
         [TestCase(70.1, FocusLevel.High)]
         public void Classify_MatchesHudColours(double? focus, FocusLevel level) =>
             Assert.That(_engine.Classify(focus), Is.EqualTo(level));
+
+        [Test]
+        public void WrongAnswerFeedback_StaysLonger_AlsoWhenSpedUp()
+        {
+            var config = new AdaptiveConfig();
+            Assert.That(config.Feedback(correct: true, speedUp: false), Is.EqualTo(config.TransitionS));
+            Assert.That(config.Feedback(correct: true, speedUp: true), Is.EqualTo(config.FastTransitionS));
+            Assert.That(config.Feedback(correct: false, speedUp: false), Is.EqualTo(7));
+            Assert.That(config.Feedback(correct: false, speedUp: true), Is.EqualTo(7));
+        }
     }
 }
