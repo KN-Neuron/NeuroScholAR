@@ -58,7 +58,7 @@ namespace NeuroScholAR.App
             var world = new GameObject("World UI").transform;
             _room = new GameObject("Palace").AddComponent<PalaceRoom>();
             _placer = _room.gameObject.AddComponent<SurfacePlacer>();
-            _placer.Init(_room, _camera.transform);
+            _placer.Init(_room, _camera.transform, _clock);
             _placer.Completed += () =>
             {
                 _app.FinishPlacement();
@@ -109,6 +109,7 @@ namespace NeuroScholAR.App
             }
 
             _app.Tick();
+            _placer.Hold = _app.IsPaused; // a paused session never counts as stuck placement
             _dev.Tick();
             HandleNotices();
             if (_shownPhase != _app.Phase)

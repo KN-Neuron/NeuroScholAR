@@ -40,11 +40,20 @@ namespace NeuroScholAR.Core.Adaptive
         public double TransitionS = 3;
         public double FastTransitionS = 1.5;
 
+        /// <summary>
+        /// Feedback after a wrong answer, "Nie pamiętam" or running out of time: long enough to find the glowing right
+        /// object and read its pair, short enough not to keep the user standing. Same in sped-up mode.
+        /// </summary>
+        public double WrongTransitionS = 7;
+
         /// <summary>Learning → Test switches automatically this long after the last object has been viewed.</summary>
         public double AutoTestDelayS = 10;
 
         public double AnswerTime(bool speedUp) => speedUp ? FastAnswerTimeS : AnswerTimeS;
         public double Transition(bool speedUp) => speedUp ? FastTransitionS : TransitionS;
+
+        /// <summary>How long answer feedback stays up: longer when the user has to see where the right object is.</summary>
+        public double Feedback(bool correct, bool speedUp) => correct ? Transition(speedUp) : WrongTransitionS;
     }
 
     public enum AdaptiveEvent

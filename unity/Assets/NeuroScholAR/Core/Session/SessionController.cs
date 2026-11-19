@@ -273,7 +273,7 @@ namespace NeuroScholAR.Core.Session
             else if (Palace.Mode == PalaceMode.Test && Palace.Step == TestStep.Find)
             {
                 Palace.Choose(index, CurrentFocus());
-                _nextQuestionAt = _clock.NowSeconds + _adaptiveConfig.Transition(SpeedUp);
+                _nextQuestionAt = _clock.NowSeconds + _adaptiveConfig.Feedback(Palace.LastCorrect, SpeedUp);
             }
         }
 
@@ -283,7 +283,7 @@ namespace NeuroScholAR.Core.Session
             if (Phase == AppPhase.Session && !Palace.IsPaused && Palace.Step == TestStep.Find)
             {
                 Palace.GiveUp(CurrentFocus());
-                _nextQuestionAt = _clock.NowSeconds + _adaptiveConfig.Transition(SpeedUp);
+                _nextQuestionAt = _clock.NowSeconds + _adaptiveConfig.Feedback(correct: false, SpeedUp);
             }
         }
 

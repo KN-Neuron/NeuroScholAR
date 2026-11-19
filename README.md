@@ -172,17 +172,17 @@ The app only uses AR Foundation's `XROrigin`/camera, so XREAL is an XR provider,
 | Focus: calibration length, clean-window minimum, zero-baseline guard, % per ratio doubling, EMA, hold time | `Core/Focus/FocusEstimator.cs` → `FocusConfig` |
 | Signal: notch frequency (50/60 Hz), band-pass, window/hop, warm-up, artifact and contact thresholds, ocular channels | `Core/Signal/EegPipeline.cs` → `EegPipelineConfig` |
 | Spaced repetition: correct answers to master, mastered recurrence, extra copies for misses | `SpacedRepetitionScheduler` constructor |
-| Placement rules: spacing, relaxed spacing (when surfaces run out), max distance, objects per surface, kind preference | `Core/Learning/SurfacePlanner.cs` → `PlacementConfig` |
-| Surface sampling: grid step, edge margin, floor tolerance, wall heights, object sizes | `App/Palace/SurfacePlacer.cs` constants |
+| Placement rules: spacing, relaxed spacing (when surfaces run out), max distance, objects per surface, kind preference, stuck-placement timeout (`PlacementTimeoutSeconds`, error with retry) | `Core/Learning/SurfacePlanner.cs` → `PlacementConfig` |
+| Surface sampling: grid step, edge margin, floor tolerance, wall heights, object sizes, mesh raycast budget per frame (`MeshSweepBudgetMs`) | `App/Palace/SurfacePlacer.cs` constants |
 | Fallback ring layout (no plane detection) | `App/Palace/PalaceRoom.cs` → `Slots` |
 | Look-to-learn dwell, poke press depth / travel | `App/Palace/Interactor.cs` constants |
 | Scan time before placing | `App/Palace/SurfacePlacer.cs` → `ScanSeconds` |
 | Palm menu open angle and offsets | `App/UI/PalmMenu.cs` constants |
-| Find time, feedback time, auto test delay | `AdaptiveConfig` (`AnswerTimeS`, `TransitionS`, `AutoTestDelayS`) |
+| Find time, feedback time (right answer; wrong answer `WrongTransitionS` = 7 s), auto test delay | `AdaptiveConfig` (`AnswerTimeS`, `TransitionS`, `WrongTransitionS`, `AutoTestDelayS`) |
 
 ## Tests
 
-- `dotnet test` runs 99 tests:
+- `dotnet test` runs 104 tests:
   - band power on synthetic sinusoids per band, with amplitude checked against A²/2
   - focus normalization edge cases: zero, negative, NaN and ∞ baselines and ratios, clamping, EMA
     hold/stale, calibration failure modes
@@ -190,6 +190,7 @@ The app only uses AR Foundation's `XROrigin`/camera, so XREAL is an XR provider,
   - adaptive state machine with an injected clock: thresholds, durations, cooldown, break, hysteresis,
     session limit
   - spaced-repetition ordering
+  - placement watchdog: no timeout while scanning, timeout without progress, progress and pause restart the timer
   - import parser: CSV/JSON, malformed, empty, duplicates, size limit
   - connection manager: Bluetooth off, permission denied, link loss and reconnect
   - exporter outbox

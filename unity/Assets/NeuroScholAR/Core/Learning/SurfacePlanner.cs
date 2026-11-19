@@ -58,6 +58,13 @@ namespace NeuroScholAR.Core.Learning
         public float FurnitureScore = 2f;
         public float WallScore = 1.5f;
         public float FloorScore = 1f;
+
+        /// <summary>
+        /// After the room scan, seconds without a new object before placement counts as stuck and the user gets an
+        /// error with "try again" / "place around me" (see <see cref="PlacementWatchdog"/>). Objects drop every 0.5 s
+        /// while spots are free, so this only fires when the room has run out of usable spots or the app stalls.
+        /// </summary>
+        public float PlacementTimeoutSeconds = 15f;
     }
 
     /// <summary>
