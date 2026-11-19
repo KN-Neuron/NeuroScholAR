@@ -63,10 +63,6 @@ namespace NeuroScholAR.App.UI
         private readonly Text _manualPageText;
         private int _manualPage;
 
-        // "Dodaj parę" shows the new pair at once and closes the keyboard on the next frame (see Tick): closing the
-        // on-screen keyboard can hold up a frame, and the pair should not wait for it.
-        private bool _clearManualFields;
-
         // The custom set made with "Wpisz ręcznie": one button under the predefined sets, for this run only
         // (no cross-session storage, see SPECIFICATION.md).
         private readonly RectTransform _sets;
@@ -432,22 +428,16 @@ namespace NeuroScholAR.App.UI
 
             _manualPairs.Add((prompt, answer));
             ShowManualPairs(T($"Dodano: {prompt}", $"Added: {prompt}"));
-            _clearManualFields = true;
+
+            // Ready for the next pair. An open keyboard stays open and just moves back to the term box: closing it
+            // stalled the glasses for a moment.
+            _manualEditor.Clear(_manualPrompt);
+            _manualEditor.Clear(_manualAnswer);
+            _manualEditor.Place(_manualPrompt);
         }
 
         /// <summary>Every frame while the setup screen is up (cheap when idle).</summary>
-        public void Tick()
-        {
-            if (_clearManualFields)
-            {
-                // A frame after "Dodaj parę": the new pair is already on screen. Close the keyboard first, so it can't
-                // type the cleared field full again.
-                _clearManualFields = false;
-                EndTyping();
-                _manualEditor.Clear(_manualPrompt);
-                _manualEditor.Clear(_manualAnswer);
-            }
-        }
+        public void Tick() => _manualEditor.Tick();
 
         private void FinishManual()
         {
@@ -473,7 +463,6 @@ namespace NeuroScholAR.App.UI
                 Select(material);
 
                 // Start the next custom set from scratch.
-                _clearManualFields = false;
                 _manualPairs.Clear();
                 _manualEditor.Clear(_manualName);
                 _manualEditor.Clear(_manualPrompt);
@@ -607,14 +596,30 @@ namespace NeuroScholAR.App.UI
         /// </summary>
         private sealed class SharedEditor
         {
+            // While typing, the box gets a thick violet ring and a tinted fill: the touch keyboard draws no caret in
+            // the field, so without it you can't tell which box the keys go to until text appears.
+            private static readonly Color FocusFill = new Color(0.92f, 0.88f, 1f, 1f);
+
             private readonly InputField _field;
             private readonly Text _placeholder;
+            private readonly Image _fill;
+            private readonly Color _normalFill;
+            private readonly Image _ring;
             private EntryBox _box;
+            private bool _ringShown;
 
             public SharedEditor(InputField field)
             {
                 _field = field;
                 _placeholder = (Text)field.placeholder;
+                _fill = field.GetComponent<Image>();
+                _normalFill = _fill.color;
+                _ring = Ui.AddEdge(_fill, new Color(Ui.Accent.r, Ui.Accent.g, Ui.Accent.b, 1f));
+                Ui.Stretch(_ring.rectTransform, -4); // just outside the box
+                var thick = _ring.gameObject.AddComponent<Outline>();
+                thick.effectColor = _ring.color;
+                thick.effectDistance = new Vector2(2, -2);
+                _ring.enabled = false;
                 field.onValueChanged.AddListener(value =>
                 {
                     // Only real typing: not the cancel's restore (field no longer focused) nor the closing keyboard's last sync.
@@ -671,13 +676,25 @@ namespace NeuroScholAR.App.UI
                 }
             }
 
-            /// <summary>Call after the keyboard has closed (see <see cref="EndTyping"/>).</summary>
+            /// <summary>Empties a box; if the editor is in it, an open keyboard is emptied too and stays open.</summary>
             public void Clear(EntryBox box)
             {
                 box.Value = string.Empty;
                 if (box == _box)
                 {
                     _field.text = string.Empty;
+                }
+            }
+
+            /// <summary>Shows which box is being typed in. Every frame; does nothing unless focus changed.</summary>
+            public void Tick()
+            {
+                var focused = _field.isFocused;
+                if (focused != _ringShown)
+                {
+                    _ringShown = focused;
+                    _ring.enabled = focused;
+                    _fill.color = focused ? FocusFill : _normalFill;
                 }
             }
 
