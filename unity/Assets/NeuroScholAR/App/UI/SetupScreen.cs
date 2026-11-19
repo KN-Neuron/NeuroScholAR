@@ -53,7 +53,18 @@ namespace NeuroScholAR.App.UI
         private readonly KeptInput _manualAnswer;
 
         private readonly List<(string prompt, string answer)> _manualPairs = new List<(string, string)>();
-        private const int ManualListLines = 4; // last pairs shown under the buttons; more would run off the panel
+        private const int ManualPageSize = 4; // pairs shown at once under the buttons; more would run off the panel
+
+        // Page through all typed pairs. Buttons, not a scroll view: fingertip and gaze input click but never drag.
+        private readonly GameObject _manualPager;
+        private readonly Button _manualPrevBtn;
+        private readonly Button _manualNextBtn;
+        private readonly Text _manualPageText;
+        private int _manualPage;
+
+        // "Dodaj parę" shows the new pair at once and closes the keyboard on the next frame (see Tick): closing the
+        // on-screen keyboard can hold up a frame, and the pair should not wait for it.
+        private bool _clearManualFields;
 
         // The custom set made with "Wpisz ręcznie": one button under the predefined sets, for this run only
         // (no cross-session storage, see SPECIFICATION.md).
@@ -182,6 +193,20 @@ namespace NeuroScholAR.App.UI
             _manualCancelBtn = Ui.Button(manualRow, "Anuluj", () => ShowManual(false), Ui.Panel, height: 50, fontSize: 20);
             _manualList = Ui.Label(manual, string.Empty, 20, Ui.Muted);
 
+            var pager = Ui.Row("ManualPager", manual, 10);
+            _manualPager = pager.gameObject;
+            pager.SetSiblingIndex(_manualList.transform.GetSiblingIndex()); // above the list: a long list can't push it off the panel
+            _manualPrevBtn = Ui.Button(pager, "‹ Wcześniejsze", () => PageManual(-1), Ui.Panel, height: 44, fontSize: 18);
+            _manualPageText = Ui.Label(pager, string.Empty, 18, Ui.Muted, TextAnchor.MiddleCenter);
+            _manualNextBtn = Ui.Button(pager, "Późniejsze ›", () => PageManual(1), Ui.Panel, height: 44, fontSize: 18);
+
+            // A press would otherwise select the button, and taking focus from the text field closes the keyboard
+            // before "Dodaj parę" runs: the stall then comes before the pair shows up.
+            foreach (var button in new[] { _manualAddBtn, _manualDoneBtn, _manualCancelBtn, _manualPrevBtn, _manualNextBtn })
+            {
+                button.navigation = new Navigation { mode = Navigation.Mode.None };
+            }
+
             ShowManual(false);
             UpdateTranslations();
             Refresh();
@@ -208,6 +233,8 @@ namespace NeuroScholAR.App.UI
             Ui.SetButtonText(_manualAddBtn, T("Dodaj parę", "Add Pair"));
             Ui.SetButtonText(_manualDoneBtn, T("Gotowe", "Done"));
             Ui.SetButtonText(_manualCancelBtn, T("Anuluj", "Cancel"));
+            Ui.SetButtonText(_manualPrevBtn, T("‹ Wcześniejsze", "‹ Earlier"));
+            Ui.SetButtonText(_manualNextBtn, T("Późniejsze ›", "Later ›"));
             Ui.SetButtonText(_devToggle, DevLabel());
             Ui.SetButtonText(_tutorial, T("Samouczek", "Tutorial"));
 
@@ -390,7 +417,7 @@ namespace NeuroScholAR.App.UI
 
         private void AddManualPair()
         {
-            EndTyping();
+            // While a field is focused its text follows the keyboard every frame, so it can be read before closing.
             var prompt = _manualPrompt.Text;
             var answer = _manualAnswer.Text;
             if (prompt.Length == 0 || answer.Length == 0)
@@ -400,9 +427,22 @@ namespace NeuroScholAR.App.UI
             }
 
             _manualPairs.Add((prompt, answer));
-            _manualPrompt.Clear();
-            _manualAnswer.Clear();
             ShowManualPairs(T($"Dodano: {prompt}", $"Added: {prompt}"));
+            _clearManualFields = true;
+        }
+
+        /// <summary>Every frame while the setup screen is up (cheap when idle).</summary>
+        public void Tick()
+        {
+            if (_clearManualFields)
+            {
+                // A frame after "Dodaj parę": the new pair is already on screen. Close the keyboard first, so it can't
+                // type the cleared field full again.
+                _clearManualFields = false;
+                EndTyping();
+                _manualPrompt.Clear();
+                _manualAnswer.Clear();
+            }
         }
 
         private void FinishManual()
@@ -429,6 +469,7 @@ namespace NeuroScholAR.App.UI
                 Select(material);
 
                 // Start the next custom set from scratch.
+                _clearManualFields = false;
                 _manualPairs.Clear();
                 _manualName.Clear();
                 _manualPrompt.Clear();
@@ -453,8 +494,22 @@ namespace NeuroScholAR.App.UI
             }
         }
 
-        /// <summary>Under the manual-entry buttons: an optional note, the pair count and the last few pairs.</summary>
+        /// <summary>Under the manual-entry buttons: an optional note, the pair count and the newest page of pairs.</summary>
         private void ShowManualPairs(string note = null)
+        {
+            _manualPage = LastManualPage();
+            RenderManualPairs(note);
+        }
+
+        private void PageManual(int delta)
+        {
+            _manualPage = Mathf.Clamp(_manualPage + delta, 0, LastManualPage());
+            RenderManualPairs(null);
+        }
+
+        private int LastManualPage() => Math.Max(0, (_manualPairs.Count - 1) / ManualPageSize);
+
+        private void RenderManualPairs(string note)
         {
             var lines = new List<string>();
             if (!string.IsNullOrEmpty(note))
@@ -462,9 +517,21 @@ namespace NeuroScholAR.App.UI
                 lines.Add(note);
             }
 
-            lines.Add(T($"Pary w zestawie: {_manualPairs.Count}", $"Pairs in the set: {_manualPairs.Count}"));
-            lines.AddRange(_manualPairs.Skip(Math.Max(0, _manualPairs.Count - ManualListLines)).Select(p => $"• {p.prompt}: {p.answer}"));
+            var count = _manualPairs.Count;
+            var first = _manualPage * ManualPageSize;
+            var shown = Math.Min(ManualPageSize, count - first);
+            lines.Add(T($"Pary w zestawie: {count}", $"Pairs in the set: {count}"));
+            for (var i = first; i < first + shown; i++)
+            {
+                lines.Add($"{i + 1}. {_manualPairs[i].prompt}: {_manualPairs[i].answer}");
+            }
+
             _manualList.text = string.Join("\n", lines);
+
+            _manualPager.SetActive(count > ManualPageSize);
+            _manualPageText.text = shown > 0 ? $"{first + 1}–{first + shown} / {count}" : string.Empty;
+            _manualPrevBtn.interactable = _manualPage > 0;
+            _manualNextBtn.interactable = _manualPage < LastManualPage();
         }
 
         /// <summary>Puts the custom set on the selection list (one button, replaced by the next custom set).</summary>

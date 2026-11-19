@@ -128,6 +128,10 @@ namespace NeuroScholAR.App
             else
             {
                 _session.TickToast(); // toasts can show on any screen
+                if (_app.Phase == AppPhase.Setup)
+                {
+                    _setup.Tick();
+                }
             }
 
             if (Time.unscaledTime >= _nextRefresh)
