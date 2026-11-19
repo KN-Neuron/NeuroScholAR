@@ -48,9 +48,10 @@ namespace NeuroScholAR.App.UI
         private readonly Button _manualCancelBtn;
 
         private readonly GameObject _calibrationFailed;
-        private readonly KeptInput _manualName;
-        private readonly KeptInput _manualPrompt;
-        private readonly KeptInput _manualAnswer;
+        private readonly SharedEditor _manualEditor;
+        private readonly EntryBox _manualName;
+        private readonly EntryBox _manualPrompt;
+        private readonly EntryBox _manualAnswer;
 
         private readonly List<(string prompt, string answer)> _manualPairs = new List<(string, string)>();
         private const int ManualPageSize = 4; // pairs shown at once under the buttons; more would run off the panel
@@ -183,9 +184,11 @@ namespace NeuroScholAR.App.UI
             Ui.Stretch(manual);
             _manual = manual.gameObject;
             _manualTitleText = Ui.Label(manual, "Własny zestaw", 36, style: FontStyle.Bold);
-            _manualName = new KeptInput(Ui.Input(manual, "Nazwa zestawu"));
-            _manualPrompt = new KeptInput(Ui.Input(manual, "Pojęcie / wydarzenie"));
-            _manualAnswer = new KeptInput(Ui.Input(manual, "Definicja / data"));
+            _manualEditor = new SharedEditor(Ui.Input(manual, string.Empty));
+            _manualName = new EntryBox(manual, _manualEditor);
+            _manualPrompt = new EntryBox(manual, _manualEditor);
+            _manualAnswer = new EntryBox(manual, _manualEditor);
+            _manualEditor.Place(_manualName);
 
             var manualRow = Ui.Row("ManualButtons", manual, 10);
             _manualAddBtn = Ui.Button(manualRow, "Dodaj parę", AddManualPair, Ui.Panel, height: 50, fontSize: 20);
@@ -238,9 +241,10 @@ namespace NeuroScholAR.App.UI
             Ui.SetButtonText(_devToggle, DevLabel());
             Ui.SetButtonText(_tutorial, T("Samouczek", "Tutorial"));
 
-            if (_manualName.Field.placeholder is Text namePh) namePh.text = T("Nazwa zestawu", "Set Name");
-            if (_manualPrompt.Field.placeholder is Text promptPh) promptPh.text = T("Pojęcie / wydarzenie", "Term / Event");
-            if (_manualAnswer.Field.placeholder is Text answerPh) answerPh.text = T("Definicja / data", "Definition / Date");
+            _manualName.Placeholder = T("Nazwa zestawu", "Set Name");
+            _manualPrompt.Placeholder = T("Pojęcie / wydarzenie", "Term / Event");
+            _manualAnswer.Placeholder = T("Definicja / data", "Definition / Date");
+            _manualEditor.Refresh();
             if (_customSet != null) Ui.SetButtonText(_customSetButton, CustomSetLabel());
 
             if (_app.Material == null)
@@ -440,8 +444,8 @@ namespace NeuroScholAR.App.UI
                 // type the cleared field full again.
                 _clearManualFields = false;
                 EndTyping();
-                _manualPrompt.Clear();
-                _manualAnswer.Clear();
+                _manualEditor.Clear(_manualPrompt);
+                _manualEditor.Clear(_manualAnswer);
             }
         }
 
@@ -471,9 +475,9 @@ namespace NeuroScholAR.App.UI
                 // Start the next custom set from scratch.
                 _clearManualFields = false;
                 _manualPairs.Clear();
-                _manualName.Clear();
-                _manualPrompt.Clear();
-                _manualAnswer.Clear();
+                _manualEditor.Clear(_manualName);
+                _manualEditor.Clear(_manualPrompt);
+                _manualEditor.Clear(_manualAnswer);
                 ShowManual(false);
             }
             catch (MaterialImportException e)
@@ -549,43 +553,141 @@ namespace NeuroScholAR.App.UI
         private string CustomSetLabel() => _customSet.Set.SetName + T(" (własny)", " (custom)");
 
         /// <summary>
-        /// Input field that keeps what was typed when the on-screen keyboard is closed without its "Done" key. Unity's
-        /// InputField counts that as a cancel and puts the old text back (empty for a new pair), so on the glasses every
-        /// entry vanished before "Dodaj parę" read it (issue #31).
+        /// One text box of the manual-entry page. It only shows its text; the typing happens in the
+        /// <see cref="SharedEditor"/>, which moves into the box that is tapped.
         /// </summary>
-        private sealed class KeptInput
+        private sealed class EntryBox
         {
-            private string _typed = string.Empty;
+            private readonly Text _text;
+            private readonly Text _hint;
+            private string _value = string.Empty;
 
-            public KeptInput(InputField field)
+            public EntryBox(Transform parent, SharedEditor editor)
             {
-                Field = field;
+                // Same look as a text field, but a plain button: tapping it never takes focus from the editor.
+                var look = Ui.Input(parent, string.Empty);
+                _text = look.textComponent;
+                _hint = (Text)look.placeholder;
+                var go = look.gameObject;
+                UnityEngine.Object.DestroyImmediate(look);
+                var button = go.AddComponent<Button>();
+                button.navigation = new Navigation { mode = Navigation.Mode.None };
+                button.onClick.AddListener(() => editor.Edit(this));
+                Rect = (RectTransform)go.transform;
+            }
+
+            public RectTransform Rect { get; }
+
+            public string Placeholder
+            {
+                get => _hint.text;
+                set => _hint.text = value;
+            }
+
+            public string Value
+            {
+                get => _value;
+                set
+                {
+                    _value = value ?? string.Empty;
+                    _text.text = _value;
+                    _hint.enabled = _value.Length == 0;
+                }
+            }
+
+            public string Text => _value.Trim();
+        }
+
+        /// <summary>
+        /// The one real text field behind all manual-entry boxes, so there is only ever one on-screen keyboard. Tapping
+        /// another box while typing moves this field into it and swaps the keyboard's text: before, Unity closed the
+        /// keyboard for the old field and opened a new one for the next, and the glasses stalled in between.
+        /// It also keeps what was typed when the keyboard is closed without its "Done" key: Unity counts that as a
+        /// cancel and puts the old text back, so every entry vanished before "Dodaj parę" read it (issue #31).
+        /// </summary>
+        private sealed class SharedEditor
+        {
+            private readonly InputField _field;
+            private readonly Text _placeholder;
+            private EntryBox _box;
+
+            public SharedEditor(InputField field)
+            {
+                _field = field;
+                _placeholder = (Text)field.placeholder;
                 field.onValueChanged.AddListener(value =>
                 {
                     // Only real typing: not the cancel's restore (field no longer focused) nor the closing keyboard's last sync.
                     var keyboard = field.touchScreenKeyboard;
-                    if (field.isFocused && (keyboard == null || keyboard.status == TouchScreenKeyboard.Status.Visible))
+                    if (_box != null && field.isFocused && (keyboard == null || keyboard.status == TouchScreenKeyboard.Status.Visible))
                     {
-                        _typed = value;
+                        _box.Value = value;
                     }
                 });
                 field.onEndEdit.AddListener(_ =>
                 {
-                    if (field.wasCanceled && field.text != _typed)
+                    if (_box == null)
                     {
-                        field.text = _typed;
+                        return;
+                    }
+
+                    if (!field.wasCanceled)
+                    {
+                        _box.Value = field.text; // "Done": the keyboard's final text is the entry
+                    }
+                    else if (field.text != _box.Value)
+                    {
+                        field.text = _box.Value;
                     }
                 });
             }
 
-            public InputField Field { get; }
-
-            public string Text => Field.text.Trim();
-
-            public void Clear()
+            /// <summary>Puts the editor over <paramref name="box"/> without opening the keyboard.</summary>
+            public void Place(EntryBox box)
             {
-                _typed = string.Empty;
-                Field.text = string.Empty;
+                _box = box;
+                var rect = (RectTransform)_field.transform;
+                rect.SetParent(box.Rect, false);
+                Ui.Stretch(rect);
+                _placeholder.text = box.Placeholder;
+                _field.text = box.Value; // also replaces the text of an open keyboard, which stays open
+                var keyboard = _field.touchScreenKeyboard;
+                if (keyboard != null && keyboard.active)
+                {
+                    keyboard.selection = new RangeInt(box.Value.Length, 0); // caret at the end, as on a fresh open
+                }
+            }
+
+            public void Edit(EntryBox box)
+            {
+                if (box != _box)
+                {
+                    Place(box); // the box we leave already holds everything typed into it
+                }
+
+                if (!_field.isFocused)
+                {
+                    _field.ActivateInputField();
+                }
+            }
+
+            /// <summary>Call after the keyboard has closed (see <see cref="EndTyping"/>).</summary>
+            public void Clear(EntryBox box)
+            {
+                box.Value = string.Empty;
+                if (box == _box)
+                {
+                    _field.text = string.Empty;
+                }
+            }
+
+            /// <summary>Placeholder texts changed (language switch).</summary>
+            public void Refresh()
+            {
+                if (_box != null)
+                {
+                    _placeholder.text = _box.Placeholder;
+                }
             }
         }
 
