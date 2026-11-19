@@ -518,7 +518,7 @@ namespace NeuroScholAR.App.Palace
         private static bool SelectPressed()
         {
             var keyboard = Keyboard.current;
-            if (keyboard != null && (keyboard.spaceKey.wasPressedThisFrame || keyboard.enterKey.wasPressedThisFrame))
+            if (keyboard != null && (keyboard.spaceKey.wasPressedThisFrame || keyboard.enterKey.wasPressedThisFrame) && !TypingInField())
             {
                 return true;
             }
@@ -547,6 +547,16 @@ namespace NeuroScholAR.App.Palace
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Space and Enter belong to a text field being typed in. Otherwise a space in "Pojęcie" clicked whatever the
+        /// reticle was on (in the Editor: the next field, so the rest of the word landed there).
+        /// </summary>
+        private static bool TypingInField()
+        {
+            var selected = EventSystem.current == null ? null : EventSystem.current.currentSelectedGameObject;
+            return selected != null && selected.TryGetComponent<InputField>(out var field) && field.isFocused;
         }
 
         private static bool Pressed(InputDevice device, string control) =>

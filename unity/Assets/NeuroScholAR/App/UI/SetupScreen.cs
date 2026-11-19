@@ -7,6 +7,7 @@ using NeuroScholAR.Core.Eeg;
 using NeuroScholAR.Core.Learning;
 using NeuroScholAR.Core.Session;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using static NeuroScholAR.App.UI.Lang;
 
@@ -47,11 +48,26 @@ namespace NeuroScholAR.App.UI
         private readonly Button _manualCancelBtn;
 
         private readonly GameObject _calibrationFailed;
-        private readonly InputField _manualName;
-        private readonly InputField _manualPrompt;
-        private readonly InputField _manualAnswer;
+        private readonly SharedEditor _manualEditor;
+        private readonly EntryBox _manualName;
+        private readonly EntryBox _manualPrompt;
+        private readonly EntryBox _manualAnswer;
 
         private readonly List<(string prompt, string answer)> _manualPairs = new List<(string, string)>();
+        private const int ManualPageSize = 4; // pairs shown at once under the buttons; more would run off the panel
+
+        // Page through all typed pairs. Buttons, not a scroll view: fingertip and gaze input click but never drag.
+        private readonly GameObject _manualPager;
+        private readonly Button _manualPrevBtn;
+        private readonly Button _manualNextBtn;
+        private readonly Text _manualPageText;
+        private int _manualPage;
+
+        // The custom set made with "Wpisz ręcznie": one button under the predefined sets, for this run only
+        // (no cross-session storage, see SPECIFICATION.md).
+        private readonly RectTransform _sets;
+        private Button _customSetButton;
+        private ImportResult _customSet;
 
         private EegConnectionException _seenError;
         private float _errorAt = float.NegativeInfinity;
@@ -106,10 +122,10 @@ namespace NeuroScholAR.App.UI
             _step1Text = Ui.Label(leftCard, "WYBÓR MATERIAŁU", 22, Ui.Muted, style: FontStyle.Bold);
 
             // Stacked Vertical List for Predefined Sets (Prevents text squishing)
-            var sets = Ui.Column("Sets", leftCard, spacing: 8);
+            _sets = Ui.Column("Sets", leftCard, spacing: 8);
             foreach (var set in PredefinedSets.All)
             {
-                Ui.Button(sets, set.SetName, () => Select(new ImportResult(set, Array.Empty<string>())), Ui.Raised, height: 46, fontSize: 20);
+                Ui.Button(_sets, set.SetName, () => Select(new ImportResult(set, Array.Empty<string>())), Ui.Raised, height: 46, fontSize: 20);
             }
 
             // Custom Import Actions
@@ -164,15 +180,31 @@ namespace NeuroScholAR.App.UI
             Ui.Stretch(manual);
             _manual = manual.gameObject;
             _manualTitleText = Ui.Label(manual, "Własny zestaw", 36, style: FontStyle.Bold);
-            _manualName = Ui.Input(manual, "Nazwa zestawu");
-            _manualPrompt = Ui.Input(manual, "Pojęcie / wydarzenie");
-            _manualAnswer = Ui.Input(manual, "Definicja / data");
+            _manualEditor = new SharedEditor(Ui.Input(manual, string.Empty));
+            _manualName = new EntryBox(manual, _manualEditor);
+            _manualPrompt = new EntryBox(manual, _manualEditor);
+            _manualAnswer = new EntryBox(manual, _manualEditor);
+            _manualEditor.Place(_manualName);
 
             var manualRow = Ui.Row("ManualButtons", manual, 10);
             _manualAddBtn = Ui.Button(manualRow, "Dodaj parę", AddManualPair, Ui.Panel, height: 50, fontSize: 20);
             _manualDoneBtn = Ui.Button(manualRow, "Gotowe", FinishManual, Ui.Accent, height: 50, fontSize: 20);
             _manualCancelBtn = Ui.Button(manualRow, "Anuluj", () => ShowManual(false), Ui.Panel, height: 50, fontSize: 20);
             _manualList = Ui.Label(manual, string.Empty, 20, Ui.Muted);
+
+            var pager = Ui.Row("ManualPager", manual, 10);
+            _manualPager = pager.gameObject;
+            pager.SetSiblingIndex(_manualList.transform.GetSiblingIndex()); // above the list: a long list can't push it off the panel
+            _manualPrevBtn = Ui.Button(pager, "‹ Wcześniejsze", () => PageManual(-1), Ui.Panel, height: 44, fontSize: 18);
+            _manualPageText = Ui.Label(pager, string.Empty, 18, Ui.Muted, TextAnchor.MiddleCenter);
+            _manualNextBtn = Ui.Button(pager, "Późniejsze ›", () => PageManual(1), Ui.Panel, height: 44, fontSize: 18);
+
+            // A press would otherwise select the button, and taking focus from the text field closes the keyboard
+            // before "Dodaj parę" runs: the stall then comes before the pair shows up.
+            foreach (var button in new[] { _manualAddBtn, _manualDoneBtn, _manualCancelBtn, _manualPrevBtn, _manualNextBtn })
+            {
+                button.navigation = new Navigation { mode = Navigation.Mode.None };
+            }
 
             ShowManual(false);
             UpdateTranslations();
@@ -200,12 +232,16 @@ namespace NeuroScholAR.App.UI
             Ui.SetButtonText(_manualAddBtn, T("Dodaj parę", "Add Pair"));
             Ui.SetButtonText(_manualDoneBtn, T("Gotowe", "Done"));
             Ui.SetButtonText(_manualCancelBtn, T("Anuluj", "Cancel"));
+            Ui.SetButtonText(_manualPrevBtn, T("‹ Wcześniejsze", "‹ Earlier"));
+            Ui.SetButtonText(_manualNextBtn, T("Późniejsze ›", "Later ›"));
             Ui.SetButtonText(_devToggle, DevLabel());
             Ui.SetButtonText(_tutorial, T("Samouczek", "Tutorial"));
 
-            if (_manualName.placeholder is Text namePh) namePh.text = T("Nazwa zestawu", "Set Name");
-            if (_manualPrompt.placeholder is Text promptPh) promptPh.text = T("Pojęcie / wydarzenie", "Term / Event");
-            if (_manualAnswer.placeholder is Text answerPh) answerPh.text = T("Definicja / data", "Definition / Date");
+            _manualName.Placeholder = T("Nazwa zestawu", "Set Name");
+            _manualPrompt.Placeholder = T("Pojęcie / wydarzenie", "Term / Event");
+            _manualAnswer.Placeholder = T("Definicja / data", "Definition / Date");
+            _manualEditor.Refresh();
+            if (_customSet != null) Ui.SetButtonText(_customSetButton, CustomSetLabel());
 
             if (_app.Material == null)
                 _materialInfo.text = T("Nie wybrano materiału.", "No material selected.");
@@ -373,34 +409,302 @@ namespace NeuroScholAR.App.UI
         {
             _manual.SetActive(show);
             _main.SetActive(!show);
+            if (show)
+            {
+                ShowManualPairs();
+            }
         }
 
         private void AddManualPair()
         {
-            if (string.IsNullOrWhiteSpace(_manualPrompt.text) || string.IsNullOrWhiteSpace(_manualAnswer.text))
+            // While a field is focused its text follows the keyboard every frame, so it can be read before closing.
+            var prompt = _manualPrompt.Text;
+            var answer = _manualAnswer.Text;
+            if (prompt.Length == 0 || answer.Length == 0)
             {
-                _manualList.text = T("Uzupełnij oba pola.", "Fill in both fields.");
+                ShowManualPairs(T("Uzupełnij oba pola: pojęcie i definicję.", "Fill in both fields: term and definition."));
                 return;
             }
 
-            _manualPairs.Add((_manualPrompt.text, _manualAnswer.text));
-            _manualPrompt.text = _manualAnswer.text = string.Empty;
-            _manualList.text = string.Join("\n", _manualPairs.Select(p => $"• {p.prompt}: {p.answer}"));
+            _manualPairs.Add((prompt, answer));
+            ShowManualPairs(T($"Dodano: {prompt}", $"Added: {prompt}"));
+
+            // Ready for the next pair. An open keyboard stays open and just moves back to the term box: closing it
+            // stalled the glasses for a moment.
+            _manualEditor.Clear(_manualPrompt);
+            _manualEditor.Clear(_manualAnswer);
+            _manualEditor.Place(_manualPrompt);
         }
+
+        /// <summary>Every frame while the setup screen is up (cheap when idle).</summary>
+        public void Tick() => _manualEditor.Tick();
 
         private void FinishManual()
         {
+            EndTyping();
+            if (_manualPrompt.Text.Length > 0 && _manualAnswer.Text.Length > 0)
+            {
+                AddManualPair(); // typed but not added yet: "Gotowe" keeps it rather than dropping it
+            }
+
+            if (_manualPairs.Count == 0)
+            {
+                ShowManualPairs(T("Dodaj co najmniej jedną parę („Dodaj parę”).", "Add at least one pair (\"Add Pair\")."));
+                return;
+            }
+
             try
             {
                 var type = _manualPairs.All(p => p.answer.Trim().All(c => char.IsDigit(c) || c == '.' || c == '-'))
                     ? StudySetType.TermDate
                     : StudySetType.TermDefinition;
-                Select(MaterialParser.FromManual(_manualName.text, type, _manualPairs));
+                var material = MaterialParser.FromManual(_manualName.Text, type, _manualPairs);
+                ShowCustomSet(material);
+                Select(material);
+
+                // Start the next custom set from scratch.
+                _manualPairs.Clear();
+                _manualEditor.Clear(_manualName);
+                _manualEditor.Clear(_manualPrompt);
+                _manualEditor.Clear(_manualAnswer);
                 ShowManual(false);
             }
             catch (MaterialImportException e)
             {
-                _manualList.text = e.Message;
+                ShowManualPairs(e.Message);
+            }
+        }
+
+        /// <summary>
+        /// Ends typing: deselecting the field closes the keyboard and keeps its text, so it is read as shown and the
+        /// keyboard can't type a cleared field full again on the next frame.
+        /// </summary>
+        private static void EndTyping()
+        {
+            if (EventSystem.current != null)
+            {
+                EventSystem.current.SetSelectedGameObject(null);
+            }
+        }
+
+        /// <summary>Under the manual-entry buttons: an optional note, the pair count and the newest page of pairs.</summary>
+        private void ShowManualPairs(string note = null)
+        {
+            _manualPage = LastManualPage();
+            RenderManualPairs(note);
+        }
+
+        private void PageManual(int delta)
+        {
+            _manualPage = Mathf.Clamp(_manualPage + delta, 0, LastManualPage());
+            RenderManualPairs(null);
+        }
+
+        private int LastManualPage() => Math.Max(0, (_manualPairs.Count - 1) / ManualPageSize);
+
+        private void RenderManualPairs(string note)
+        {
+            var lines = new List<string>();
+            if (!string.IsNullOrEmpty(note))
+            {
+                lines.Add(note);
+            }
+
+            var count = _manualPairs.Count;
+            var first = _manualPage * ManualPageSize;
+            var shown = Math.Min(ManualPageSize, count - first);
+            lines.Add(T($"Pary w zestawie: {count}", $"Pairs in the set: {count}"));
+            for (var i = first; i < first + shown; i++)
+            {
+                lines.Add($"{i + 1}. {_manualPairs[i].prompt}: {_manualPairs[i].answer}");
+            }
+
+            _manualList.text = string.Join("\n", lines);
+
+            _manualPager.SetActive(count > ManualPageSize);
+            _manualPageText.text = shown > 0 ? $"{first + 1}–{first + shown} / {count}" : string.Empty;
+            _manualPrevBtn.interactable = _manualPage > 0;
+            _manualNextBtn.interactable = _manualPage < LastManualPage();
+        }
+
+        /// <summary>Puts the custom set on the selection list (one button, replaced by the next custom set).</summary>
+        private void ShowCustomSet(ImportResult material)
+        {
+            _customSet = material;
+            if (_customSetButton == null)
+            {
+                _customSetButton = Ui.Button(_sets, string.Empty, () => Select(_customSet), Ui.Raised, height: 46, fontSize: 20);
+            }
+
+            Ui.SetButtonText(_customSetButton, CustomSetLabel());
+        }
+
+        private string CustomSetLabel() => _customSet.Set.SetName + T(" (własny)", " (custom)");
+
+        /// <summary>
+        /// One text box of the manual-entry page. It only shows its text; the typing happens in the
+        /// <see cref="SharedEditor"/>, which moves into the box that is tapped.
+        /// </summary>
+        private sealed class EntryBox
+        {
+            private readonly Text _text;
+            private readonly Text _hint;
+            private string _value = string.Empty;
+
+            public EntryBox(Transform parent, SharedEditor editor)
+            {
+                // Same look as a text field, but a plain button: tapping it never takes focus from the editor.
+                var look = Ui.Input(parent, string.Empty);
+                _text = look.textComponent;
+                _hint = (Text)look.placeholder;
+                var go = look.gameObject;
+                UnityEngine.Object.DestroyImmediate(look);
+                var button = go.AddComponent<Button>();
+                button.navigation = new Navigation { mode = Navigation.Mode.None };
+                button.onClick.AddListener(() => editor.Edit(this));
+                Rect = (RectTransform)go.transform;
+            }
+
+            public RectTransform Rect { get; }
+
+            public string Placeholder
+            {
+                get => _hint.text;
+                set => _hint.text = value;
+            }
+
+            public string Value
+            {
+                get => _value;
+                set
+                {
+                    _value = value ?? string.Empty;
+                    _text.text = _value;
+                    _hint.enabled = _value.Length == 0;
+                }
+            }
+
+            public string Text => _value.Trim();
+        }
+
+        /// <summary>
+        /// The one real text field behind all manual-entry boxes, so there is only ever one on-screen keyboard. Tapping
+        /// another box while typing moves this field into it and swaps the keyboard's text: before, Unity closed the
+        /// keyboard for the old field and opened a new one for the next, and the glasses stalled in between.
+        /// It also keeps what was typed when the keyboard is closed without its "Done" key: Unity counts that as a
+        /// cancel and puts the old text back, so every entry vanished before "Dodaj parę" read it (issue #31).
+        /// </summary>
+        private sealed class SharedEditor
+        {
+            // While typing, the box gets a thick violet ring and a tinted fill: the touch keyboard draws no caret in
+            // the field, so without it you can't tell which box the keys go to until text appears.
+            private static readonly Color FocusFill = new Color(0.92f, 0.88f, 1f, 1f);
+
+            private readonly InputField _field;
+            private readonly Text _placeholder;
+            private readonly Image _fill;
+            private readonly Color _normalFill;
+            private readonly Image _ring;
+            private EntryBox _box;
+            private bool _ringShown;
+
+            public SharedEditor(InputField field)
+            {
+                _field = field;
+                _placeholder = (Text)field.placeholder;
+                _fill = field.GetComponent<Image>();
+                _normalFill = _fill.color;
+                _ring = Ui.AddEdge(_fill, new Color(Ui.Accent.r, Ui.Accent.g, Ui.Accent.b, 1f));
+                Ui.Stretch(_ring.rectTransform, -4); // just outside the box
+                var thick = _ring.gameObject.AddComponent<Outline>();
+                thick.effectColor = _ring.color;
+                thick.effectDistance = new Vector2(2, -2);
+                _ring.enabled = false;
+                field.onValueChanged.AddListener(value =>
+                {
+                    // Only real typing: not the cancel's restore (field no longer focused) nor the closing keyboard's last sync.
+                    var keyboard = field.touchScreenKeyboard;
+                    if (_box != null && field.isFocused && (keyboard == null || keyboard.status == TouchScreenKeyboard.Status.Visible))
+                    {
+                        _box.Value = value;
+                    }
+                });
+                field.onEndEdit.AddListener(_ =>
+                {
+                    if (_box == null)
+                    {
+                        return;
+                    }
+
+                    if (!field.wasCanceled)
+                    {
+                        _box.Value = field.text; // "Done": the keyboard's final text is the entry
+                    }
+                    else if (field.text != _box.Value)
+                    {
+                        field.text = _box.Value;
+                    }
+                });
+            }
+
+            /// <summary>Puts the editor over <paramref name="box"/> without opening the keyboard.</summary>
+            public void Place(EntryBox box)
+            {
+                _box = box;
+                var rect = (RectTransform)_field.transform;
+                rect.SetParent(box.Rect, false);
+                Ui.Stretch(rect);
+                _placeholder.text = box.Placeholder;
+                _field.text = box.Value; // also replaces the text of an open keyboard, which stays open
+                var keyboard = _field.touchScreenKeyboard;
+                if (keyboard != null && keyboard.active)
+                {
+                    keyboard.selection = new RangeInt(box.Value.Length, 0); // caret at the end, as on a fresh open
+                }
+            }
+
+            public void Edit(EntryBox box)
+            {
+                if (box != _box)
+                {
+                    Place(box); // the box we leave already holds everything typed into it
+                }
+
+                if (!_field.isFocused)
+                {
+                    _field.ActivateInputField();
+                }
+            }
+
+            /// <summary>Empties a box; if the editor is in it, an open keyboard is emptied too and stays open.</summary>
+            public void Clear(EntryBox box)
+            {
+                box.Value = string.Empty;
+                if (box == _box)
+                {
+                    _field.text = string.Empty;
+                }
+            }
+
+            /// <summary>Shows which box is being typed in. Every frame; does nothing unless focus changed.</summary>
+            public void Tick()
+            {
+                var focused = _field.isFocused;
+                if (focused != _ringShown)
+                {
+                    _ringShown = focused;
+                    _ring.enabled = focused;
+                    _fill.color = focused ? FocusFill : _normalFill;
+                }
+            }
+
+            /// <summary>Placeholder texts changed (language switch).</summary>
+            public void Refresh()
+            {
+                if (_box != null)
+                {
+                    _placeholder.text = _box.Placeholder;
+                }
             }
         }
 
